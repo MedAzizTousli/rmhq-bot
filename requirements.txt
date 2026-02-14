@@ -1,0 +1,4 @@
+discord.py>=2
+python-dotenv
+httpx
+PyYAML
