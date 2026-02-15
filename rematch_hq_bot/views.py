@@ -7,6 +7,7 @@ import discord
 import httpx
 
 from . import config
+from .academy import ROLES, TEAMS_YAML_PATH, create_teams_from_file, register_player, unregister_player
 from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team
 from .team_icons import find_team_icon
 from .tournament_icons import find_icon
@@ -1466,6 +1467,42 @@ class SetupView(discord.ui.View):
             ephemeral=True,
         )
 
+    @discord.ui.button(
+        label="🗑️ Purge Scrims Forum",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:purge_scrims_forum",
+    )
+    async def purge_scrims_forum(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        forum_id = getattr(config, "SCRIM_FORUM_CHANNEL_ID", None)
+        if not forum_id:
+            await interaction.response.send_message(
+                "Missing `SCRIM_FORUM_CHANNEL_ID` in `.env`.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            "You're about to delete **all posts** in the configured scrims forum.\n\n"
+            "Press **Confirm purge** to proceed.",
+            ephemeral=True,
+            view=ForumPurgeConfirmView(requester_id=interaction.user.id, forum_channel_id=int(forum_id)),
+        )
+
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("SetupView error:", repr(error))
         msg = "Something went wrong handling that button."
@@ -1477,6 +1514,173 @@ class SetupView(discord.ui.View):
         except discord.DiscordException:
             # If the interaction already expired/was acknowledged, we can't respond.
             pass
+
+
+async def _iter_archived_threads_best_effort(
+    forum: discord.abc.GuildChannel,
+    *,
+    private: bool,
+) -> list[discord.Thread]:
+    """
+    Best-effort archived thread fetch across discord.py versions.
+    Returns a list (may be empty) and never raises.
+    """
+    threads: list[discord.Thread] = []
+
+    archived = getattr(forum, "archived_threads", None)
+    if not archived:
+        return threads
+
+    # discord.py signatures vary slightly across versions (private/joined flags, limit support).
+    # We'll try a few compatible call shapes.
+    call_variants = [
+        lambda: archived(private=private, limit=None),
+        lambda: archived(private=private),
+        lambda: archived(limit=None),
+        lambda: archived(),
+    ]
+
+    it = None
+    for make in call_variants:
+        try:
+            it = make()
+            break
+        except TypeError:
+            it = None
+            continue
+        except discord.DiscordException:
+            return threads
+
+    if it is None:
+        return threads
+
+    try:
+        async for t in it:
+            # If we couldn't pass private=..., filter here when possible.
+            if private and hasattr(t, "is_private") and callable(getattr(t, "is_private")):
+                try:
+                    if not t.is_private():
+                        continue
+                except Exception:
+                    pass
+            threads.append(t)
+    except discord.DiscordException:
+        return threads
+
+    return threads
+
+
+async def _purge_forum_posts(interaction: discord.Interaction, forum: discord.ForumChannel) -> None:
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    if not interaction.guild:
+        await interaction.followup.send("Run this in the server.", ephemeral=True)
+        return
+
+    # Collect active threads (guild-wide API, then filter by forum parent)
+    all_active: list[discord.Thread] = []
+    try:
+        all_active = list(await interaction.guild.active_threads())
+    except discord.DiscordException:
+        all_active = []
+
+    candidates: dict[int, discord.Thread] = {t.id: t for t in all_active if getattr(t, "parent_id", None) == forum.id}
+
+    # Add archived threads (public + private best-effort).
+    for t in await _iter_archived_threads_best_effort(forum, private=False):
+        if getattr(t, "parent_id", None) == forum.id:
+            candidates.setdefault(t.id, t)
+    for t in await _iter_archived_threads_best_effort(forum, private=True):
+        if getattr(t, "parent_id", None) == forum.id:
+            candidates.setdefault(t.id, t)
+
+    threads = list(candidates.values())
+    if not threads:
+        await interaction.followup.send(f"No posts found in {forum.mention}.", ephemeral=True)
+        return
+
+    exclude_uid = getattr(config, "SCRIM_FORUM_USER_ID_EXCLUDE", None)
+    skipped = 0
+    if exclude_uid:
+        filtered: list[discord.Thread] = []
+        for t in threads:
+            if getattr(t, "owner_id", None) == int(exclude_uid):
+                skipped += 1
+                continue
+            filtered.append(t)
+        threads = filtered
+
+    if not threads:
+        await interaction.followup.send(
+            f"Found posts in {forum.mention} but skipped **{skipped}** post(s) due to the exclude user id.",
+            ephemeral=True,
+        )
+        return
+
+    ok = 0
+    failed = 0
+    last_err: str | None = None
+
+    for t in threads:
+        try:
+            await t.delete(reason=f"/setup purge requested by {interaction.user} ({interaction.user.id})")
+            ok += 1
+        except discord.Forbidden:
+            failed += 1
+            last_err = "Missing permissions to delete some threads (need Manage Threads / Manage Channels)."
+        except discord.HTTPException as e:
+            failed += 1
+            last_err = f"HTTP error while deleting: {getattr(e, 'text', None) or repr(e)}"
+
+    msg = f"Purged **{ok}** post(s) in {forum.mention}."
+    if skipped:
+        msg += f" Skipped: **{skipped}**."
+    if failed:
+        msg += f" Failed: **{failed}**."
+    if last_err:
+        msg += f"\n\nNote: {last_err}"
+    await interaction.followup.send(msg, ephemeral=True)
+
+
+class ForumPurgeConfirmView(discord.ui.View):
+    def __init__(self, *, requester_id: int, forum_channel_id: int):
+        super().__init__(timeout=180)
+        self.requester_id = requester_id
+        self.forum_channel_id = int(forum_channel_id)
+
+    @discord.ui.button(label="Confirm purge", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        channel = interaction.guild.get_channel(self.forum_channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(self.forum_channel_id)
+            except discord.DiscordException:
+                channel = None
+
+        if not isinstance(channel, discord.ForumChannel):
+            await interaction.response.send_message("Couldn't find that forum channel.", ephemeral=True)
+            return
+
+        await _purge_forum_posts(interaction, channel)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            return
+        await interaction.response.send_message("Cancelled.", ephemeral=True)
 
 
 class SetupPartView(discord.ui.View):
@@ -1594,3 +1798,129 @@ class SetupPartView(discord.ui.View):
             return
 
         await interaction.response.send_modal(SponsorsModal())
+
+
+class AcademyRoleSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label=r, value=r, description=f"Register as {r}") for r in ROLES
+        ]
+        super().__init__(
+            placeholder="Select your role…",
+            min_values=1,
+            max_values=len(ROLES),
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        roles = [v.strip() for v in (self.values or []) if v.strip()]
+        username = getattr(interaction.user, "name", "") or ""
+        try:
+            registered = await register_player(username=username, roles=roles, default_tier=3)
+        except ValueError:
+            await interaction.response.edit_message(
+                content="Invalid role selection. Please try again.",
+                view=None,
+            )
+            return
+
+        parts = [f"**{r}** (tier **{t}**)" for r, t in registered.items()]
+        await interaction.response.edit_message(
+            content=f"Registered **{username}** as " + ", ".join(parts) + ".",
+            view=None,
+        )
+
+
+class AcademyRoleView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=120)
+        self.add_item(AcademyRoleSelect())
+
+
+class AcademySetupView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Register",
+        style=discord.ButtonStyle.primary,
+        custom_id="rematchhq:academy_register",
+    )
+    async def register(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.send_message(
+            "What’s your role?",
+            ephemeral=True,
+            view=AcademyRoleView(),
+        )
+
+    @discord.ui.button(
+        label="Unregister",
+        style=discord.ButtonStyle.danger,
+        custom_id="rematchhq:academy_unregister",
+    )
+    async def unregister(self, interaction: discord.Interaction, _: discord.ui.Button):
+        username = getattr(interaction.user, "name", "") or ""
+        existed = await unregister_player(username=username)
+        msg = "You’ve been unregistered." if existed else "You weren’t registered."
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    @discord.ui.button(
+        label="Create teams",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:academy_create_teams",
+    )
+    async def create_teams(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        teams = await create_teams_from_file()
+
+        if not teams:
+            await interaction.followup.send(
+                "Couldn't create any complete teams (need 1 player for each role, and 5 distinct players).",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(
+            f"Generated **{len(teams)}** academy team(s) into `{TEAMS_YAML_PATH.name}`.",
+            ephemeral=True,
+        )
+
+        # Preview ALL teams (chunked to stay under Discord's 2000-char limit).
+        blocks: list[str] = []
+        cur = ""
+        for i, team in enumerate(teams, start=1):
+            section_lines = [f"academy team {i}:"]
+            for role in ROLES:
+                u, t = team.get(role, ("-", 0))
+                section_lines.append(f"  {role}: {u} ({t})")
+            section = "\n".join(section_lines) + "\n"
+
+            # Keep some headroom for code fences.
+            if len(cur) + len(section) > 1800 and cur.strip():
+                blocks.append(cur.rstrip())
+                cur = ""
+            cur += section
+        if cur.strip():
+            blocks.append(cur.rstrip())
+
+        for b in blocks:
+            await interaction.followup.send("```" + b + "```", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("AcademySetupView error:", repr(error))
+        msg = "Something went wrong handling that action."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass

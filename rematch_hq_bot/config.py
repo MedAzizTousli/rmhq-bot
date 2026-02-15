@@ -38,6 +38,24 @@ SYNC_COMMANDS_ON_STARTUP = os.getenv("SYNC_COMMANDS_ON_STARTUP", "1").strip().lo
 NOTION_TOKEN = os.getenv("NOTION_TOKEN", "").strip()
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "").strip()
 
+# Scrims forum (optional; used by /setup purge button)
+SCRIM_FORUM_CHANNEL_ID_RAW = os.getenv("SCRIM_FORUM_CHANNEL_ID", "").strip()
+try:
+    SCRIM_FORUM_CHANNEL_ID = int(SCRIM_FORUM_CHANNEL_ID_RAW) if SCRIM_FORUM_CHANNEL_ID_RAW else None
+except ValueError:
+    raise SystemExit("Invalid SCRIM_FORUM_CHANNEL_ID env var (expected an integer channel id).") from None
+
+# Optional: when purging scrims forum, exclude posts (threads) created by this user id.
+SCRIM_FORUM_USER_ID_EXCLUDE_RAW = os.getenv("SCRIM_FORUM_USER_ID_EXCLUDE", "").strip()
+try:
+    SCRIM_FORUM_USER_ID_EXCLUDE = (
+        int(SCRIM_FORUM_USER_ID_EXCLUDE_RAW) if SCRIM_FORUM_USER_ID_EXCLUDE_RAW else None
+    )
+except ValueError:
+    raise SystemExit(
+        "Invalid SCRIM_FORUM_USER_ID_EXCLUDE env var (expected an integer user id)."
+    ) from None
+
 
 @dataclass(frozen=True)
 class ServerConfig:
