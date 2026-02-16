@@ -18,7 +18,7 @@ def find_icon(org_code: str) -> Path | None:
         return None
 
     root = Path(__file__).resolve().parents[1]
-    icons_dir = root / "tournament_icons"
+    icons_dir = root / "icons" / "tournaments"
     for ext in (".png", ".webp", ".jpg", ".jpeg"):
         p = icons_dir / f"{code}{ext}"
         if p.exists():

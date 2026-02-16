@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import discord
 import httpx
+import yaml
 
 from . import config
 from .academy import ROLES, TEAMS_YAML_PATH, create_teams_from_file, register_player, unregister_player
@@ -28,7 +29,8 @@ _USER_MENTION_RE = re.compile(r"<@!?(\d+)>")
 _FLAG_ALIAS_RE = re.compile(r"^:flag_([a-z]{2}):$", re.IGNORECASE)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_LEADERBOARD_CSV = _REPO_ROOT / "csv_points" / "leaderboard.csv"
+_LEADERBOARD_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_aggregated.csv"
+_ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
 
 _RULEBOOK_URL = "https://www.notion.so/Rulebook-2cd037d9654180bdba21ea03e737d8d8?source=copy_link"
 
@@ -65,7 +67,7 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
 async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
     """
     Return the team's custom emoji string if available.
-    If missing, best-effort upload it from /team_icons (requires Manage Emojis permission).
+    If missing, best-effort upload it from /icons/teams (requires Manage Emojis permission).
     """
     team = " ".join((team_name or "").strip().split())
     if not team:
@@ -232,7 +234,7 @@ def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
 
-    e = discord.Embed(title="Leaderboard (26/01 -> 09/02)", color=0x36E3bA)
+    e = discord.Embed(title="Leaderboard (02/02 -> 16/02)", color=0x36E3bA)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
@@ -381,7 +383,9 @@ def _country_to_flag(raw: str) -> str | None:
         "french": "FR",
         "germany": "DE",
         "deutschland": "DE",
+        "serbia": "RS",
         "spain": "ES",
+        "hungary": "HU",
         "italy": "IT",
         "portugal": "PT",
         "netherlands": "NL",
@@ -424,6 +428,7 @@ def _country_to_flag(raw: str) -> str | None:
         "india": "IN",
         "australia": "AU",
         "new zealand": "NZ",
+        "saudi arabia": "SA",
         "morocco": "MA",
         "tunisia": "TN",
         "algeria": "DZ",
@@ -434,6 +439,56 @@ def _country_to_flag(raw: str) -> str | None:
         return _flag_from_iso2(common[name])
 
     return None
+
+
+async def _ensure_team_role(
+    guild: discord.Guild,
+    *,
+    role_name: str,
+    team_name: str,
+    role_color: int | None,
+) -> discord.Role | None:
+    """
+    Ensure a hoisted + mentionable role exists for the team.
+    Colors the role using `role_color` from `rosters.yaml` (best-effort).
+    """
+    desired = " ".join((role_name or "").strip().split())
+    legacy = " ".join((team_name or "").strip().split())
+    if not desired or not legacy:
+        return None
+
+    # Prefer the rank-prefixed role name.
+    role = discord.utils.get(guild.roles, name=desired)
+    if role is not None:
+        # Keep it fast: only create roles if missing.
+        return role
+
+    # Back-compat: if an old role exists with just the team name, reuse it and rename (best-effort).
+    role = discord.utils.get(guild.roles, name=legacy)
+    if role is not None and role.name != desired:
+        try:
+            await role.edit(name=desired, reason="Auto-renamed team role for rosters")
+        except (discord.Forbidden, discord.HTTPException):
+            # If we can't rename, we'll just use the legacy role.
+            pass
+        return role
+
+    colour = discord.Colour(int(role_color)) if role_color is not None else None
+
+    try:
+        role = await guild.create_role(
+            name=desired,
+            colour=colour or discord.Colour.default(),
+            hoist=True,  # displayed separately on the right
+            mentionable=True,
+            reason="Auto-created team role for rosters",
+        )
+    except discord.Forbidden:
+        return None
+    except discord.HTTPException:
+        return None
+
+    return role
 
 
 def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
@@ -1193,7 +1248,7 @@ class SetupView(discord.ui.View):
 
     @discord.ui.button(
         label="📅 Tournament Today",
-        style=discord.ButtonStyle.red,
+        style=discord.ButtonStyle.primary,
         custom_id="rematchhq:tournament_today",
     )
     async def tournament_today(self, interaction: discord.Interaction, _: discord.ui.Button):
@@ -1457,7 +1512,7 @@ class SetupView(discord.ui.View):
             )
         except discord.Forbidden:
             await interaction.followup.send(
-                "I don't have permission to post in the leaderboard channel.",
+                "I don't have permission to post in the rosters channel.",
                 ephemeral=True,
             )
             return
@@ -1468,11 +1523,241 @@ class SetupView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="🗑️ Purge Scrims Forum",
-        style=discord.ButtonStyle.secondary,
-        custom_id="rematchhq:purge_scrims_forum",
+        label="👑 Rosters",
+        style=discord.ButtonStyle.green,
+        custom_id="rematchhq:rosters_embeds",
     )
-    async def purge_scrims_forum(self, interaction: discord.Interaction, _: discord.ui.Button):
+    async def rosters_embeds(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("Admins only.", ephemeral=True)
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        rosters_channel_id = server.rosters_channel_id if server else None
+        if not rosters_channel_id:
+            await interaction.followup.send(
+                "This server is missing `ROSTERS_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        if not _ROSTERS_YAML.exists():
+            await interaction.followup.send(
+                "Couldn't find `leaderboard/output/rosters.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        # Load rosters.yaml as: {team_name: {color: 0x..., roster: [{Country: id}, ...]}}
+        with _ROSTERS_YAML.open("r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        if not isinstance(raw, dict) or not raw:
+            await interaction.followup.send("`leaderboard/output/rosters.yaml` is empty or invalid.", ephemeral=True)
+            return
+
+        # Create/ensure roles and assign roster members, then post embeds.
+        # Discord allows max 10 embeds + 10 attachments per message; we do 8 teams.
+        embeds: list[discord.Embed] = []
+        files: list[discord.File] = []
+        reactions: list[str] = []
+        added = 0
+        assigned = 0
+        already_had = 0
+        missing_members = 0
+        role_failures = 0
+        member_cache: dict[int, discord.Member] = {}
+        roles_created = 0
+        roles_renamed = 0
+        roles_existing = 0
+
+        for idx, (team_name, team_block) in enumerate(raw.items(), start=1):
+            if added >= 8:
+                break
+            if not isinstance(team_name, str) or not team_name.strip():
+                continue
+            if not isinstance(team_block, dict):
+                continue
+
+            role_color_raw = team_block.get("color")
+            role_color = None
+            if role_color_raw is not None:
+                try:
+                    # Accept ints or strings like "0xFEF154".
+                    role_color = int(str(role_color_raw).strip(), 0)
+                except ValueError:
+                    role_color = None
+
+            players = team_block.get("roster")
+            if not isinstance(players, list):
+                continue
+
+            icon_path = find_team_icon(team_name)
+            desired_role_name = f"#{idx} — {team_name}"
+            before_names = {r.name for r in interaction.guild.roles}
+            role = await _ensure_team_role(
+                interaction.guild,
+                role_name=desired_role_name,
+                team_name=team_name,
+                role_color=role_color,
+            )
+            if role is None:
+                role_failures += 1
+            else:
+                # Track whether we created/renamed/existed (best-effort).
+                if role.name not in before_names:
+                    roles_created += 1
+                elif role.name == desired_role_name and team_name in before_names and desired_role_name not in before_names:
+                    roles_renamed += 1
+                else:
+                    roles_existing += 1
+
+            parsed_lines: list[str] = []
+            for item in players:
+                if not isinstance(item, dict) or len(item) != 1:
+                    continue
+                country, uid = next(iter(item.items()))
+                if not isinstance(country, str):
+                    continue
+                try:
+                    uid_i = int(uid)
+                except (TypeError, ValueError):
+                    continue
+                flag = _country_to_flag(country) or country.strip()
+                parsed_lines.append(f"{flag} <@{uid_i}>")
+
+                # Assign role to member (best-effort).
+                if role is not None:
+                    try:
+                        member = member_cache.get(uid_i) or interaction.guild.get_member(uid_i)
+                        if member is None:
+                            member = await interaction.guild.fetch_member(uid_i)
+                        member_cache[uid_i] = member
+                        if role in getattr(member, "roles", []):
+                            already_had += 1
+                        else:
+                            await member.add_roles(
+                                role,
+                                reason=f"Auto-assigned from rosters.yaml by {interaction.user} ({interaction.user.id})",
+                            )
+                            assigned += 1
+                    except discord.NotFound:
+                        missing_members += 1
+                    except discord.Forbidden:
+                        role_failures += 1
+                    except discord.HTTPException:
+                        role_failures += 1
+
+            if not parsed_lines:
+                continue
+
+            team_emoji = emoji_for(team_name, interaction.guild)
+            role_tag = role.mention if role is not None else team_name
+            bits: list[str] = []
+            if team_emoji:
+                bits.append(team_emoji)
+                # Collect reactions in roster order (best-effort).
+                if team_emoji not in reactions:
+                    reactions.append(team_emoji)
+            bits.append(role_tag)
+            team_heading = "### " + " ".join(bits)
+            e = discord.Embed(
+                title=None,
+                color=0x36E3bA,
+                description=team_heading + "\n" + "\n".join(parsed_lines),
+            )
+
+            # Attach the team icon as-is (no resizing/padding).
+            if icon_path:
+                try:
+                    attach_name = f"{idx}_{icon_path.name}"
+                    files.append(discord.File(icon_path, filename=attach_name))
+                    e.set_image(url=f"attachment://{attach_name}")
+                except (OSError, discord.DiscordException):
+                    pass
+
+            embeds.append(e)
+            added += 1
+
+        if added == 0:
+            await interaction.followup.send(
+                "No valid rosters found in `leaderboard/output/rosters.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(rosters_channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(rosters_channel_id)
+            except discord.DiscordException:
+                channel = None
+
+        if channel is None or not hasattr(channel, "send"):
+            await interaction.followup.send(
+                "Couldn't find the rosters channel. Check `ROSTERS_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            ping_id = server.tournaments_ping_id if server else None
+            ping = None
+            if ping_id:
+                ping_role = interaction.guild.get_role(ping_id)
+                ping = f"<@&{ping_id}>" if ping_role else f"<@{ping_id}>"
+            msg = await channel.send(
+                content=ping,
+                embeds=embeds,
+                files=files,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+            )
+
+            # React with team emojis (best-effort), in the same order as the roster.
+            for em in reactions[:20]:
+                try:
+                    await msg.add_reaction(em)
+                except discord.DiscordException:
+                    pass
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to post in the rosters channel.",
+                ephemeral=True,
+            )
+            return
+
+        # Summary to the admin.
+        await interaction.followup.send(
+            (
+                f"Posted rosters in <#{channel.id}>.\n"
+                f"Roles: **{roles_created}** created, **{roles_renamed}** renamed, **{roles_existing}** existing.\n"
+                f"Assignments: **{assigned}** added, **{already_had}** already had, **{missing_members}** missing.\n"
+                f"Failures (permissions/API): **{role_failures}**."
+            ),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="🗑️ Purge Scrims",
+        style=discord.ButtonStyle.danger,
+        custom_id="rematchhq:purge_scrims",
+    )
+    async def purge_scrims(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
             return
@@ -1488,10 +1773,12 @@ class SetupView(discord.ui.View):
             await interaction.response.send_message("Admins only.", ephemeral=True)
             return
 
-        forum_id = getattr(config, "SCRIM_FORUM_CHANNEL_ID", None)
+        server = config.server_for_guild_id(interaction.guild.id)
+        forum_id = server.scrim_forum_channel_id if server else None
+        exclude_uid = server.scrim_forum_user_id_exclude if server else None
         if not forum_id:
             await interaction.response.send_message(
-                "Missing `SCRIM_FORUM_CHANNEL_ID` in `.env`.",
+                "Missing `SCRIM_FORUM_CHANNEL_ID` in `config.yaml` for this server.",
                 ephemeral=True,
             )
             return
@@ -1500,7 +1787,11 @@ class SetupView(discord.ui.View):
             "You're about to delete **all posts** in the configured scrims forum.\n\n"
             "Press **Confirm purge** to proceed.",
             ephemeral=True,
-            view=ForumPurgeConfirmView(requester_id=interaction.user.id, forum_channel_id=int(forum_id)),
+            view=ForumPurgeConfirmView(
+                requester_id=interaction.user.id,
+                forum_channel_id=int(forum_id),
+                exclude_user_id=(int(exclude_uid) if exclude_uid else None),
+            ),
         )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
@@ -1570,7 +1861,12 @@ async def _iter_archived_threads_best_effort(
     return threads
 
 
-async def _purge_forum_posts(interaction: discord.Interaction, forum: discord.ForumChannel) -> None:
+async def _purge_forum_posts(
+    interaction: discord.Interaction,
+    forum: discord.ForumChannel,
+    *,
+    exclude_user_id: int | None,
+) -> None:
     await interaction.response.defer(ephemeral=True, thinking=True)
 
     if not interaction.guild:
@@ -1599,12 +1895,11 @@ async def _purge_forum_posts(interaction: discord.Interaction, forum: discord.Fo
         await interaction.followup.send(f"No posts found in {forum.mention}.", ephemeral=True)
         return
 
-    exclude_uid = getattr(config, "SCRIM_FORUM_USER_ID_EXCLUDE", None)
     skipped = 0
-    if exclude_uid:
+    if exclude_user_id:
         filtered: list[discord.Thread] = []
         for t in threads:
-            if getattr(t, "owner_id", None) == int(exclude_uid):
+            if getattr(t, "owner_id", None) == int(exclude_user_id):
                 skipped += 1
                 continue
             filtered.append(t)
@@ -1643,10 +1938,11 @@ async def _purge_forum_posts(interaction: discord.Interaction, forum: discord.Fo
 
 
 class ForumPurgeConfirmView(discord.ui.View):
-    def __init__(self, *, requester_id: int, forum_channel_id: int):
+    def __init__(self, *, requester_id: int, forum_channel_id: int, exclude_user_id: int | None):
         super().__init__(timeout=180)
         self.requester_id = requester_id
         self.forum_channel_id = int(forum_channel_id)
+        self.exclude_user_id = int(exclude_user_id) if exclude_user_id else None
 
     @discord.ui.button(label="Confirm purge", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
@@ -1673,7 +1969,7 @@ class ForumPurgeConfirmView(discord.ui.View):
             await interaction.response.send_message("Couldn't find that forum channel.", ephemeral=True)
             return
 
-        await _purge_forum_posts(interaction, channel)
+        await _purge_forum_posts(interaction, channel, exclude_user_id=self.exclude_user_id)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):

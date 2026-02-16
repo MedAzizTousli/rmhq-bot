@@ -109,7 +109,8 @@ async def setup(interaction: discord.Interaction):
             "🏆 **Tournament Results:** Post the results of a tournament.\n"
             "📅 **Tournament Today:** Post today's tournaments.\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
-            "🗑️ **Purge Scrims Forum:** Delete all posts in the scrims forum."
+            "👑 **Rosters:** Post the current rosters (top 8).\n"
+            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum."
         ),
         color=0x36E3bA,
     )

@@ -35,5 +35,5 @@ python bot.py
 - `SETUP_CHANNEL_ID` is now read from `config.yaml` (optional per server). If omitted, setup commands/buttons work in any channel (admin-only).
 - Team emojis are resolved from server custom emojis by name (spaces become `_`).
 - Tournament Results are posted to the channel in `RESULTS_TOURNAMENTS_CHANNEL_ID` (defaults to your `🏆・results`).
-- Tournament host icons: put files in `tournament_icons/` (e.g. `tournament_icons/MRC.png`). In the modal, use `MRC | Tournament Name` so the bot can pick the right thumbnail.
+- Tournament host icons: put files in `icons/tournaments/` (e.g. `icons/tournaments/MRC.png`). In the modal, use `MRC | Tournament Name` so the bot can pick the right thumbnail.
 - To enable `📅 Tournament Today`, set `NOTION_TOKEN` + `NOTION_DATABASE_ID` and (optionally) `UPCOMING_TOURNAMENTS_CHANNEL_ID`.

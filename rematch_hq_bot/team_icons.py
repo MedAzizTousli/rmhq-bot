@@ -8,7 +8,7 @@ def _key(team_name: str) -> str:
     """
     Normalize a team name to match both:
     - custom emoji naming in Discord (spaces -> underscore, strip others)
-    - icon file naming in /team_icons (e.g. Orion_Esports.png)
+    - icon file naming in /icons/teams (e.g. Orion_Esports.png)
     """
     s = re.sub(r"\s+", "_", (team_name or "").strip())
     s = re.sub(r"[^0-9A-Za-z_]", "", s)
@@ -21,7 +21,7 @@ def find_team_icon(team_name: str) -> Path | None:
         return None
 
     root = Path(__file__).resolve().parents[1]
-    icons_dir = root / "team_icons"
+    icons_dir = root / "icons" / "teams"
     for ext in (".png", ".webp", ".jpg", ".jpeg"):
         p = icons_dir / f"{key}{ext}"
         if p.exists():
