@@ -12,3 +12,6 @@ dependencies = [
     "PyYAML",
     "Pillow"
 ]
+
+[tool.vercel.scripts]
+build = "python bot.py"
