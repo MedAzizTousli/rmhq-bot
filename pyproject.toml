@@ -1,0 +1,14 @@
+[project]
+name = "rmhq-bot"
+version = "0.1.0"
+description = "Rematch HQ Discord Bot"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.117.1",
+    "discord.py>=2",
+    "python-dotenv",
+    "httpx",
+    "PyYAML",
+    "Pillow"
+]

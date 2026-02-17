@@ -874,15 +874,23 @@ class TournamentInfoModal(discord.ui.Modal):
                 kwargs["file"] = icon_file
             msg = await channel.send(**kwargs)
 
-            # React with :PRT: or :lART: depending on tournament type (best-effort).
-            emoji_name = "PRT" if ttype == "PRT" else ("lART" if ttype == "ART" else "")
-            if emoji_name:
+            # React with a tournament-type emoji (best-effort).
+            # ART previously used "lART" which won't match a normal ":ART:" emoji name.
+            candidates: list[str] = []
+            if ttype in {"PRT", "ART"}:
+                candidates.append(ttype)
+            if ttype == "ART":
+                candidates.append("lART")  # backward-compat if a server actually named it this way
+
+            for emoji_name in candidates:
                 e = _find_guild_emoji_by_name(interaction.guild, emoji_name)
-                if e:
-                    try:
-                        await msg.add_reaction(e)
-                    except discord.DiscordException:
-                        pass
+                if not e:
+                    continue
+                try:
+                    await msg.add_reaction(e)
+                except discord.DiscordException:
+                    pass
+                break
         except discord.Forbidden:
             await interaction.response.send_message(
                 "I don't have permission to post in the tournaments channel.",
