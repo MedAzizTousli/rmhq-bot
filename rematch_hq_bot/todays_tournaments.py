@@ -89,8 +89,6 @@ def extract_tournament(page: dict[str, Any], props: NotionProps) -> Tournament |
 
     if t_type != "Cup":
         return None
-    if fmt != "5v5":
-        return None
     if not starts_at:
         return None
 
@@ -121,7 +119,6 @@ def notion_query_payload_for_today_cups(
         "filter": {
             "and": [
                 {"property": props.type, "select": {"equals": "Cup"}},
-                {"property": props.format, "select": {"equals": "5v5"}},
                 {
                     "property": props.starts_at,
                     "date": {"on_or_after": start.isoformat(), "before": end.isoformat()},

@@ -48,6 +48,7 @@ class ServerConfig:
     setup_channel_id: int | None = None
 
     # Channels used by features (optional depending on server).
+    test_channel_id: int | None = None
     results_tournaments_channel_id: int | None = None
     upcoming_tournaments_channel_id: int | None = None
     leaderboard_channel_id: int | None = None
@@ -139,6 +140,7 @@ def _load_servers() -> dict[int, ServerConfig]:
             name=str(name),
             server_id=server_id,
             setup_channel_id=_as_int(block.get("SETUP_CHANNEL_ID")),
+            test_channel_id=_as_int(block.get("TEST_CHANNEL_ID")),
             results_tournaments_channel_id=_as_int(block.get("RESULTS_TOURNAMENTS_CHANNEL_ID")),
             upcoming_tournaments_channel_id=_as_int(block.get("UPCOMING_TOURNAMENTS_CHANNEL_ID")),
             leaderboard_channel_id=_as_int(block.get("LEADERBOARD_CHANNEL_ID")),

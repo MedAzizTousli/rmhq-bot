@@ -34,6 +34,80 @@ _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
 
 _RULEBOOK_URL = "https://www.notion.so/Rulebook-2cd037d9654180bdba21ea03e737d8d8?source=copy_link"
 
+
+async def _get_sendable_channel(
+    guild: discord.Guild,
+    channel_id: int,
+) -> discord.abc.Messageable | None:
+    ch = guild.get_channel(channel_id)
+    if ch is None:
+        try:
+            ch = await guild.fetch_channel(channel_id)
+        except discord.DiscordException:
+            ch = None
+    return ch if (ch is not None and hasattr(ch, "send")) else None
+
+
+async def _delete_messages_best_effort(
+    channel: discord.abc.Messageable,
+    message_ids: list[int],
+) -> None:
+    for mid in message_ids:
+        try:
+            msg = await channel.fetch_message(mid)  # type: ignore[attr-defined]
+            await msg.delete()
+        except Exception:
+            pass
+
+
+class ConfirmPostView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        requester_id: int,
+        test_channel_id: int,
+        preview_message_ids: list[int],
+        publish_fn,
+    ):
+        super().__init__(timeout=300)
+        self.requester_id = requester_id
+        self.test_channel_id = int(test_channel_id)
+        self.preview_message_ids = list(preview_message_ids)
+        self.publish_fn = publish_fn
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        test_ch = await _get_sendable_channel(interaction.guild, self.test_channel_id)
+        if test_ch is not None and self.preview_message_ids:
+            await _delete_messages_best_effort(test_ch, self.preview_message_ids)
+
+        result = await self.publish_fn(interaction)
+        await interaction.followup.send(result or "Confirmed and posted.", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=False)
+        test_ch = await _get_sendable_channel(interaction.guild, self.test_channel_id)
+        if test_ch is not None and self.preview_message_ids:
+            await _delete_messages_best_effort(test_ch, self.preview_message_ids)
+        await interaction.followup.send("Cancelled (preview deleted).", ephemeral=True)
+
 def _find_guild_emoji_by_name(guild: discord.Guild, name: str) -> str:
     want = (name or "").strip().lower()
     if not want:
@@ -689,38 +763,57 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             )
             return
 
-        channel = interaction.guild.get_channel(results_channel_id)
-        if channel is None:
-            try:
-                channel = await interaction.guild.fetch_channel(results_channel_id)
-            except discord.DiscordException:
-                channel = None
-
-        if channel is None or not hasattr(channel, "send"):
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
             await interaction.response.send_message(
-                "Couldn't find the results channel. Check `RESULTS_TOURNAMENTS_CHANNEL_ID` in `config.yaml`.",
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
                 ephemeral=True,
             )
             return
 
-        try:
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.response.send_message("Couldn't find the test channel.", ephemeral=True)
+            return
+
+        # Post preview first (no pings).
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        preview_kwargs = dict(
+            content="[PREVIEW] Tournament Results",
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+        )
+        if icon_path:
+            preview_kwargs["file"] = discord.File(icon_path, filename=icon_path.name)
+        preview_msg = await test_channel.send(**preview_kwargs)
+
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(results_channel_id))
+            if dest is None:
+                return "Couldn't find the results channel."
+
+            ping_id = server.tournaments_ping_id if server else None
+            content = None
+            if ping_id:
+                role = guild.get_role(ping_id)
+                content = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
+
             kwargs = dict(
+                content=content,
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
             )
-            ping_id = server.tournaments_ping_id if server else None
-            if ping_id:
-                role = interaction.guild.get_role(ping_id)
-                ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
-                kwargs["content"] = ping
-            if icon_file:
-                kwargs["file"] = icon_file
-            msg = await channel.send(**kwargs)
+            if icon_path:
+                kwargs["file"] = discord.File(icon_path, filename=icon_path.name)
+            msg = await dest.send(**kwargs)
 
             # React with winner + organizer emojis (best-effort).
             winner_team = teams[0] if teams else ""
-            winner_emoji = emoji_for(winner_team, interaction.guild)
-            org_emoji = emoji_for_org(t_org, interaction.guild)
+            winner_emoji = emoji_for(winner_team, guild)
+            org_emoji = emoji_for_org(t_org, guild)
             for r in (winner_emoji, org_emoji):
                 if not r:
                     continue
@@ -728,17 +821,22 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
                     await msg.add_reaction(r)
                 except discord.DiscordException:
                     pass
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "I don't have permission to post in the results channel.",
-                ephemeral=True,
-            )
-            return
 
-        await interaction.response.send_message(
-            f"Posted in <#{results_channel_id}>.",
+            return f"Posted in <#{results_channel_id}>."
+
+        await interaction.followup.send(
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{results_channel_id}>.",
             ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=[preview_msg.id],
+                publish_fn=_publish,
+            ),
         )
+        return
+
+        # (Posting now happens only after confirmation.)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         print("TournamentResultsModal error:", repr(error))
@@ -1323,6 +1421,7 @@ class SetupView(discord.ui.View):
         for t in tournaments_today[:25]:
             entry = f"{t.entry_fee_eur:g}€" if isinstance(t.entry_fee_eur, (int, float)) else "-"
             prize = f"{t.prize_pool_eur:g}€" if isinstance(t.prize_pool_eur, (int, float)) else "-"
+            fmt = (t.format or "").strip() or "-"
 
             website = f"[URL]({t.website_url})" if t.website_url else "-"
             dsc = f"[URL]({t.discord_url})" if t.discord_url else "-"
@@ -1332,9 +1431,12 @@ class SetupView(discord.ui.View):
             title = f"{org_emoji} {t.title}".strip() if org_emoji else t.title
 
             e = discord.Embed(title=title, color=0x36E3bA)
-            e.add_field(name="Time", value=discord_timestamp(t.starts_at), inline=True)
+            # Row 1
+            e.add_field(name="Format", value=fmt, inline=True)
             e.add_field(name="Entry fee", value=entry, inline=True)
             e.add_field(name="Prize pool", value=prize, inline=True)
+            # Row 2
+            e.add_field(name="Time", value=discord_timestamp(t.starts_at), inline=True)
             e.add_field(name="Website", value=website, inline=True)
             e.add_field(name="Discord", value=dsc, inline=True)
 
@@ -1367,12 +1469,26 @@ class SetupView(discord.ui.View):
             )
             return
 
-        try:
-            ping_id = server.tournaments_ping_id if server else None
-            ping = None
-            if ping_id:
-                role = interaction.guild.get_role(ping_id)
-                ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
+            await interaction.followup.send(
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
+                ephemeral=True,
+            )
+            return
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
+
+        ping_id = server.tournaments_ping_id if server else None
+        ping = None
+        if ping_id:
+            role = interaction.guild.get_role(ping_id)
+            ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
+
+        async def _send_chunks(dest, *, preview: bool) -> list[int]:
+            ids: list[int] = []
             for i in range(0, len(items), 10):
                 chunk = items[i : i + 10]
                 embeds = [e for (e, _, __, ___) in chunk]
@@ -1385,36 +1501,67 @@ class SetupView(discord.ui.View):
                     seen.add(filename)
                     files.append(discord.File(path, filename=filename))
 
-                msg = await channel.send(
-                    content=ping if (ping and i == 0) else None,
-                    embeds=embeds,
-                    files=files,
-                    allowed_mentions=discord.AllowedMentions(
-                        everyone=False, roles=True, users=True
-                    ),
-                )
+                if preview:
+                    content = None
+                    if i == 0:
+                        content = f"[PREVIEW] Tournament Today\n{ping or ''}".strip()
+                    msg = await dest.send(
+                        content=content,
+                        embeds=embeds,
+                        files=files,
+                        allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+                    )
+                else:
+                    msg = await dest.send(
+                        content=ping if (ping and i == 0) else None,
+                        embeds=embeds,
+                        files=files,
+                        allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+                    )
 
-                # React with tournament (org) emoji(s). Best-effort.
-                org_emojis = []
-                for __e, org, __p, __f in chunk:
-                    em = emoji_for_org(org, interaction.guild)
-                    if em and em not in org_emojis:
-                        org_emojis.append(em)
-                for em in org_emojis[:5]:
-                    try:
-                        await msg.add_reaction(em)
-                    except discord.DiscordException:
-                        pass
+                    # React with tournament (org) emoji(s). Best-effort.
+                    org_emojis = []
+                    for __e, org, __p, __f in chunk:
+                        em = emoji_for_org(org, interaction.guild)
+                        if em and em not in org_emojis:
+                            org_emojis.append(em)
+                    for em in org_emojis[:5]:
+                        try:
+                            await msg.add_reaction(em)
+                        except discord.DiscordException:
+                            pass
+
+                ids.append(msg.id)
+            return ids
+
+        try:
+            preview_ids = await _send_chunks(test_channel, preview=True)
         except discord.Forbidden:
-            await interaction.followup.send(
-                "I don't have permission to post in the tournaments channel.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("I don't have permission to post in the test channel.", ephemeral=True)
             return
 
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(upcoming_channel_id))
+            if dest is None:
+                return "Couldn't find the upcoming tournaments channel."
+            try:
+                await _send_chunks(dest, preview=False)
+            except discord.Forbidden:
+                return "I don't have permission to post in the tournaments channel."
+            return f"Posted {len(items)} tournaments in <#{upcoming_channel_id}>."
+
         await interaction.followup.send(
-            f"Posted {len(items)} tournaments in <#{channel.id}>.",
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{upcoming_channel_id}>.",
             ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=preview_ids,
+                publish_fn=_publish,
+            ),
         )
 
     @discord.ui.button(
@@ -1507,27 +1654,66 @@ class SetupView(discord.ui.View):
             )
             return
 
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
+            await interaction.followup.send(
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
+                ephemeral=True,
+            )
+            return
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
+
         try:
             ping_id = server.tournaments_ping_id if server else None
             ping = None
             if ping_id:
                 role = interaction.guild.get_role(ping_id)
                 ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
-            await channel.send(
-                content=ping,
+            preview_msg = await test_channel.send(
+                content=f"[PREVIEW] Leaderboard\n{ping or ''}".strip(),
                 embed=embed,
-                allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
             )
         except discord.Forbidden:
             await interaction.followup.send(
-                "I don't have permission to post in the rosters channel.",
+                "I don't have permission to post in the test channel.",
                 ephemeral=True,
             )
             return
 
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(leaderboard_channel_id))
+            if dest is None:
+                return "Couldn't find the leaderboard channel."
+
+            ping_id2 = server.tournaments_ping_id if server else None
+            ping2 = None
+            if ping_id2:
+                role2 = guild.get_role(ping_id2)
+                ping2 = f"<@&{ping_id2}>" if role2 else f"<@{ping_id2}>"
+
+            await dest.send(
+                content=ping2,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+            )
+            return f"Posted leaderboard in <#{leaderboard_channel_id}>."
+
         await interaction.followup.send(
-            f"Posted leaderboard in <#{channel.id}>.",
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{leaderboard_channel_id}>.",
             ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=[preview_msg.id],
+                publish_fn=_publish,
+            ),
         )
 
     @discord.ui.button(
@@ -1579,185 +1765,204 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("`leaderboard/output/rosters.yaml` is empty or invalid.", ephemeral=True)
             return
 
-        # Create/ensure roles and assign roster members, then post embeds.
-        # Discord allows max 10 embeds + 10 attachments per message; we do 8 teams.
-        embeds: list[discord.Embed] = []
-        files: list[discord.File] = []
-        reactions: list[str] = []
-        added = 0
-        assigned = 0
-        already_had = 0
-        missing_members = 0
-        role_failures = 0
-        member_cache: dict[int, discord.Member] = {}
-        roles_created = 0
-        roles_renamed = 0
-        roles_existing = 0
-
-        for idx, (team_name, team_block) in enumerate(raw.items(), start=1):
-            if added >= 8:
-                break
-            if not isinstance(team_name, str) or not team_name.strip():
-                continue
-            if not isinstance(team_block, dict):
-                continue
-
-            role_color_raw = team_block.get("color")
-            role_color = None
-            if role_color_raw is not None:
-                try:
-                    # Accept ints or strings like "0xFEF154".
-                    role_color = int(str(role_color_raw).strip(), 0)
-                except ValueError:
-                    role_color = None
-
-            players = team_block.get("roster")
-            if not isinstance(players, list):
-                continue
-
-            icon_path = find_team_icon(team_name)
-            desired_role_name = f"#{idx} — {team_name}"
-            before_names = {r.name for r in interaction.guild.roles}
-            role = await _ensure_team_role(
-                interaction.guild,
-                role_name=desired_role_name,
-                team_name=team_name,
-                role_color=role_color,
-            )
-            if role is None:
-                role_failures += 1
-            else:
-                # Track whether we created/renamed/existed (best-effort).
-                if role.name not in before_names:
-                    roles_created += 1
-                elif role.name == desired_role_name and team_name in before_names and desired_role_name not in before_names:
-                    roles_renamed += 1
-                else:
-                    roles_existing += 1
-
-            parsed_lines: list[str] = []
-            for item in players:
-                if not isinstance(item, dict) or len(item) != 1:
-                    continue
-                country, uid = next(iter(item.items()))
-                if not isinstance(country, str):
-                    continue
-                try:
-                    uid_i = int(uid)
-                except (TypeError, ValueError):
-                    continue
-                flag = _country_to_flag(country) or country.strip()
-                parsed_lines.append(f"{flag} <@{uid_i}>")
-
-                # Assign role to member (best-effort).
-                if role is not None:
-                    try:
-                        member = member_cache.get(uid_i) or interaction.guild.get_member(uid_i)
-                        if member is None:
-                            member = await interaction.guild.fetch_member(uid_i)
-                        member_cache[uid_i] = member
-                        if role in getattr(member, "roles", []):
-                            already_had += 1
-                        else:
-                            await member.add_roles(
-                                role,
-                                reason=f"Auto-assigned from rosters.yaml by {interaction.user} ({interaction.user.id})",
-                            )
-                            assigned += 1
-                    except discord.NotFound:
-                        missing_members += 1
-                    except discord.Forbidden:
-                        role_failures += 1
-                    except discord.HTTPException:
-                        role_failures += 1
-
-            if not parsed_lines:
-                continue
-
-            team_emoji = emoji_for(team_name, interaction.guild)
-            role_tag = role.mention if role is not None else team_name
-            bits: list[str] = []
-            if team_emoji:
-                bits.append(team_emoji)
-                # Collect reactions in roster order (best-effort).
-                if team_emoji not in reactions:
-                    reactions.append(team_emoji)
-            bits.append(role_tag)
-            team_heading = "### " + " ".join(bits)
-            e = discord.Embed(
-                title=None,
-                color=0x36E3bA,
-                description=team_heading + "\n" + "\n".join(parsed_lines),
-            )
-
-            # Attach the team icon as-is (no resizing/padding).
-            if icon_path:
-                try:
-                    attach_name = f"{idx}_{icon_path.name}"
-                    files.append(discord.File(icon_path, filename=attach_name))
-                    e.set_image(url=f"attachment://{attach_name}")
-                except (OSError, discord.DiscordException):
-                    pass
-
-            embeds.append(e)
-            added += 1
-
-        if added == 0:
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
             await interaction.followup.send(
-                "No valid rosters found in `leaderboard/output/rosters.yaml`.",
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
                 ephemeral=True,
             )
             return
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
 
-        channel = interaction.guild.get_channel(rosters_channel_id)
-        if channel is None:
-            try:
-                channel = await interaction.guild.fetch_channel(rosters_channel_id)
-            except discord.DiscordException:
-                channel = None
+        ping_id = server.tournaments_ping_id if server else None
+        ping = None
+        if ping_id:
+            ping_role = interaction.guild.get_role(ping_id)
+            ping = f"<@&{ping_id}>" if ping_role else f"<@{ping_id}>"
 
-        if channel is None or not hasattr(channel, "send"):
-            await interaction.followup.send(
-                "Couldn't find the rosters channel. Check `ROSTERS_CHANNEL_ID` in `config.yaml`.",
-                ephemeral=True,
+        async def _build_payload(*, do_role_work: bool):
+            embeds: list[discord.Embed] = []
+            files: list[discord.File] = []
+            reactions: list[str] = []
+            added = 0
+
+            assigned = 0
+            already_had = 0
+            missing_members = 0
+            role_failures = 0
+            roles_created = 0
+            roles_renamed = 0
+            roles_existing = 0
+            member_cache: dict[int, discord.Member] = {}
+
+            for idx, (team_name, team_block) in enumerate(raw.items(), start=1):
+                if added >= 8:
+                    break
+                if not isinstance(team_name, str) or not team_name.strip():
+                    continue
+                if not isinstance(team_block, dict):
+                    continue
+
+                role_color_raw = team_block.get("color")
+                role_color = None
+                if role_color_raw is not None:
+                    try:
+                        role_color = int(str(role_color_raw).strip(), 0)
+                    except ValueError:
+                        role_color = None
+
+                players = team_block.get("roster")
+                if not isinstance(players, list):
+                    continue
+
+                icon_path = find_team_icon(team_name)
+                desired_role_name = f"#{idx} — {team_name}"
+
+                role = None
+                if do_role_work:
+                    before_names = {r.name for r in interaction.guild.roles}
+                    role = await _ensure_team_role(
+                        interaction.guild,
+                        role_name=desired_role_name,
+                        team_name=team_name,
+                        role_color=role_color,
+                    )
+                    if role is None:
+                        role_failures += 1
+                    else:
+                        if role.name not in before_names:
+                            roles_created += 1
+                        elif role.name == desired_role_name and team_name in before_names and desired_role_name not in before_names:
+                            roles_renamed += 1
+                        else:
+                            roles_existing += 1
+                else:
+                    role = discord.utils.get(interaction.guild.roles, name=desired_role_name) or discord.utils.get(
+                        interaction.guild.roles, name=team_name
+                    )
+
+                parsed_lines: list[str] = []
+                for item in players:
+                    if not isinstance(item, dict) or len(item) != 1:
+                        continue
+                    country, uid = next(iter(item.items()))
+                    if not isinstance(country, str):
+                        continue
+                    try:
+                        uid_i = int(uid)
+                    except (TypeError, ValueError):
+                        continue
+                    flag = _country_to_flag(country) or country.strip()
+                    parsed_lines.append(f"{flag} <@{uid_i}>")
+
+                    if do_role_work and role is not None:
+                        try:
+                            member = member_cache.get(uid_i) or interaction.guild.get_member(uid_i)
+                            if member is None:
+                                member = await interaction.guild.fetch_member(uid_i)
+                            member_cache[uid_i] = member
+                            if role in getattr(member, "roles", []):
+                                already_had += 1
+                            else:
+                                await member.add_roles(
+                                    role,
+                                    reason=f"Auto-assigned from rosters.yaml by {interaction.user} ({interaction.user.id})",
+                                )
+                                assigned += 1
+                        except discord.NotFound:
+                            missing_members += 1
+                        except (discord.Forbidden, discord.HTTPException):
+                            role_failures += 1
+
+                if not parsed_lines:
+                    continue
+
+                team_emoji = emoji_for(team_name, interaction.guild)
+                role_tag = role.mention if role is not None else team_name
+                bits: list[str] = []
+                if team_emoji:
+                    bits.append(team_emoji)
+                    if team_emoji not in reactions:
+                        reactions.append(team_emoji)
+                bits.append(role_tag)
+                team_heading = "### " + " ".join(bits)
+                e = discord.Embed(
+                    title=None,
+                    color=0x36E3bA,
+                    description=team_heading + "\n" + "\n".join(parsed_lines),
+                )
+
+                if icon_path:
+                    try:
+                        attach_name = f"{idx}_{icon_path.name}"
+                        files.append(discord.File(icon_path, filename=attach_name))
+                        e.set_image(url=f"attachment://{attach_name}")
+                    except (OSError, discord.DiscordException):
+                        pass
+
+                embeds.append(e)
+                added += 1
+
+            summary = (
+                f"Roles: **{roles_created}** created, **{roles_renamed}** renamed, **{roles_existing}** existing.\n"
+                f"Assignments: **{assigned}** added, **{already_had}** already had, **{missing_members}** missing.\n"
+                f"Failures (permissions/API): **{role_failures}**."
             )
+
+            return embeds, files, reactions, added, summary
+
+        embeds_preview, files_preview, __reactions, added_preview, __summary = await _build_payload(do_role_work=False)
+        if added_preview == 0:
+            await interaction.followup.send("No valid rosters found in `leaderboard/output/rosters.yaml`.", ephemeral=True)
             return
 
         try:
-            ping_id = server.tournaments_ping_id if server else None
-            ping = None
-            if ping_id:
-                ping_role = interaction.guild.get_role(ping_id)
-                ping = f"<@&{ping_id}>" if ping_role else f"<@{ping_id}>"
-            msg = await channel.send(
+            preview_msg = await test_channel.send(
+                content=f"[PREVIEW] Rosters\n{ping or ''}".strip(),
+                embeds=embeds_preview,
+                files=files_preview,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            )
+        except discord.Forbidden:
+            await interaction.followup.send("I don't have permission to post in the test channel.", ephemeral=True)
+            return
+
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(rosters_channel_id))
+            if dest is None:
+                return "Couldn't find the rosters channel."
+
+            embeds, files, reactions, added, summary = await _build_payload(do_role_work=True)
+            if added == 0:
+                return "No valid rosters found."
+            msg = await dest.send(
                 content=ping,
                 embeds=embeds,
                 files=files,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
             )
-
-            # React with team emojis (best-effort), in the same order as the roster.
             for em in reactions[:20]:
                 try:
                     await msg.add_reaction(em)
                 except discord.DiscordException:
                     pass
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "I don't have permission to post in the rosters channel.",
-                ephemeral=True,
-            )
-            return
+            return f"Posted rosters in <#{rosters_channel_id}>.\n{summary}"
 
-        # Summary to the admin.
         await interaction.followup.send(
-            (
-                f"Posted rosters in <#{channel.id}>.\n"
-                f"Roles: **{roles_created}** created, **{roles_renamed}** renamed, **{roles_existing}** existing.\n"
-                f"Assignments: **{assigned}** added, **{already_had}** already had, **{missing_members}** missing.\n"
-                f"Failures (permissions/API): **{role_failures}**."
-            ),
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{rosters_channel_id}>.",
             ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=[preview_msg.id],
+                publish_fn=_publish,
+            ),
         )
 
     @discord.ui.button(
