@@ -112,7 +112,7 @@ async def setup(interaction: discord.Interaction):
             "👑 **Rosters:** Post the current rosters (top 8).\n"
             "🗑️ **Purge Scrims:** Delete all posts in the scrims forum."
         ),
-        color=0x36E3bA,
+        color=0xbe629b,
     )
     await interaction.response.send_message(embed=embed, view=SetupView())
 
@@ -140,7 +140,7 @@ async def setup_part(interaction: discord.Interaction):
                     🥇 **Hall of Fame:** Create a hall of fame embed.\n
                     💰 **Sponsors:** Create a sponsors embed.\n
         """,
-        color=0x36E3bA,
+        color=0xbe629b,
     )
     await interaction.response.send_message(embed=embed, view=SetupPartView())
 
@@ -166,7 +166,7 @@ async def setup_academy(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Academy Registration",
         description="Use the buttons below to register or unregister for the Academy.",
-        color=0x36E3bA,
+        color=0xbe629b,
     )
     await interaction.response.send_message(embed=embed, view=AcademySetupView())
 

@@ -308,7 +308,7 @@ def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
 
-    e = discord.Embed(title="Leaderboard (02/02 -> 16/02)", color=0x36E3bA)
+    e = discord.Embed(title="Leaderboard (02/02 -> 16/02)", color=0xbe629b)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
@@ -735,7 +735,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             e = emoji_for(name, interaction.guild)
             lines.append(f"{medal} {e + ' ' if e else ''}{name}")
 
-        embed = discord.Embed(title=t_name, color=0x36E3bA)
+        embed = discord.Embed(title=t_name, color=0xbe629b)
         embed.add_field(name="Tournament", value=f"[URL]({t_url})", inline=True)
         embed.add_field(name="Entry fee", value=t_entry, inline=True)
         embed.add_field(name="Prize pool", value=t_prize, inline=True)
@@ -899,7 +899,7 @@ class TournamentInfoModal(discord.ui.Modal):
             return
 
         # Embed color
-        color = (server.embed_color or {}).get(ttype, 0x36E3bA)
+        color = (server.embed_color or {}).get(ttype, 0xbe629b)
         # Prize pool
         prize_pool = (server.prize_pool or {}).get(ttype, 50.0)
 
@@ -1109,7 +1109,7 @@ class HallOfFameModal(discord.ui.Modal):
             )
             return
 
-        color = (server.embed_color or {}).get(ttype, 0x36E3bA)
+        color = (server.embed_color or {}).get(ttype, 0xbe629b)
 
         # Attach TEAM icon as the main embed image (not thumbnail).
         team_icon_path = find_team_icon(team)
@@ -1275,7 +1275,7 @@ class SponsorsModal(discord.ui.Modal):
         if not section:
             section = "Sponsors"
 
-        color = (server.embed_color or {}).get(ttype, 0x36E3bA)
+        color = (server.embed_color or {}).get(ttype, 0xbe629b)
         embed = discord.Embed(title=f"PRT #{edition} Sponsors", color=int(color))
         embed.add_field(name=section, value="\n".join(out_lines), inline=False)
         embed.set_footer(text="Huge thanks for the support!")
@@ -1430,7 +1430,7 @@ class SetupView(discord.ui.View):
             org_emoji = emoji_for_org(org, interaction.guild)
             title = f"{org_emoji} {t.title}".strip() if org_emoji else t.title
 
-            e = discord.Embed(title=title, color=0x36E3bA)
+            e = discord.Embed(title=title, color=0xbe629b)
             # Row 1
             e.add_field(name="Format", value=fmt, inline=True)
             e.add_field(name="Entry fee", value=entry, inline=True)
@@ -1891,7 +1891,7 @@ class SetupView(discord.ui.View):
                 team_heading = "### " + " ".join(bits)
                 e = discord.Embed(
                     title=None,
-                    color=0x36E3bA,
+                    color=0xbe629b,
                     description=team_heading + "\n" + "\n".join(parsed_lines),
                 )
 
