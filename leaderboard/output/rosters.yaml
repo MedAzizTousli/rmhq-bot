@@ -1,5 +1,7 @@
 Monarchy EC:
-  color: 0x7B1C37
+  colors:
+  - 0xE3E3E3
+  - 0x7B1C37
   roster:
   - Serbia: 756565389390905355
   - Italy: 529306299893153823
@@ -7,7 +9,9 @@ Monarchy EC:
   - Italy: 473224186035175444
   - Italy: 602197237136752653
 Orion Esports:
-  color: 0x7F64BE
+  colors:
+  - 0xD5C3E8
+  - 0x050218
   roster:
   - France: 952158273316982864
   - France: 231453477102944257
@@ -15,7 +19,9 @@ Orion Esports:
   - France: 1370813691506855946
   - France: 878934699236548609
 100X35 Esports:
-  color: 0x102D96
+  colors:
+  - 0x05228B
+  - 0x7B0103
   roster:
   - France: 1150348320649265212
   - Italy: 932622305807446016
@@ -23,7 +29,9 @@ Orion Esports:
   - Hungary: 1114804828489658399
   - Serbia: 288129947971747850
 Str1ve Esports:
-  color: 0xFFFFFF
+  colors:
+  - 0xFFFFFF
+  - 0x000000
   roster:
   - Saudi Arabia: 706563187692273745
   - Portugal: 97139768399245312
@@ -31,7 +39,9 @@ Str1ve Esports:
   - Portugal: 260051205634523137
   - Portugal: 381672095916228610
 Kin:
-  color: 0xD37AFC
+  colors:
+  - 0xFFFFFD
+  - 0xD379FD
   roster:
   - France: 334961422754643970
   - France: 1438966863957856417
@@ -39,7 +49,9 @@ Kin:
   - France: 445596908702924800
   - France: 433625513194684426
 Str1ve Corp:
-  color: 0xFFFFFF
+  colors:
+  - 0xFFFFFF
+  - 0x000000
   roster:
   - Saudi Arabia: 630066810036813855
   - Italy: 800345220016242708
@@ -47,7 +59,9 @@ Str1ve Corp:
   - Portugal: 424551885685522444
   - Portugal: 464478069189771264
 Overdozee:
-  color: 0xC0CDD5
+  colors:
+  - 0xC4CFD8
+  - 0x000000
   roster:
   - Spain: 335517552681680898
   - Italy: 923209298920738837
@@ -55,9 +69,11 @@ Overdozee:
   - Portugal: 598935287749672960
   - Spain: 391621357546242059
 SPK x FLR:
-  color: 0xFEF154
+  colors:
+  - 0xFEE13A
+  - 0x292929
   roster:
-  - Germany: 275999629353418752
+  - France: 730335543703109653
   - Italy: 1439420650606428210
   - Italy: 1424529538582450220
   - England: 375517781149483008

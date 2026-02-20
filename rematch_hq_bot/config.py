@@ -59,6 +59,9 @@ class ServerConfig:
     # Mention target posted alongside results / tournaments (role preferred, else user).
     tournaments_ping_id: int | None = None
 
+    # Minimum role ID - team roles will be positioned above this role.
+    minimum_role_id: int | None = None
+
     # Setup-part settings (per tournament type like "PRT", "ART").
     tournament_info_channel_id: dict[str, int] | None = None
     hall_of_fame_channel_id: dict[str, int] | None = None
@@ -148,6 +151,7 @@ def _load_servers() -> dict[int, ServerConfig]:
             scrim_forum_channel_id=_as_int(block.get("SCRIM_FORUM_CHANNEL_ID")),
             scrim_forum_user_id_exclude=_as_int(block.get("SCRIM_FORUM_USER_ID_EXCLUDE")),
             tournaments_ping_id=_as_int(block.get("TOURNAMENTS_PING_ID")),
+            minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
             tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
             hall_of_fame_channel_id=_parse_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
             sponsors_channel_id=_parse_map_int(block.get("SPONSORS_CHANNEL_ID")),

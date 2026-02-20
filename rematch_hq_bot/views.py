@@ -9,7 +9,7 @@ import yaml
 
 from . import config
 from .academy import ROLES, TEAMS_YAML_PATH, create_teams_from_file, register_player, unregister_player
-from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team
+from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team, _find_custom_emoji
 from .team_icons import find_team_icon
 from .tournament_icons import find_icon
 from .notion_api import NotionClient
@@ -520,11 +520,15 @@ async def _ensure_team_role(
     *,
     role_name: str,
     team_name: str,
-    role_color: int | None,
+    role_colors: list[int] | None = None,
+    position_offset: int | None = None,
 ) -> discord.Role | None:
     """
     Ensure a hoisted + mentionable role exists for the team.
-    Colors the role using `role_color` from `rosters.yaml` (best-effort).
+    Colors the role using gradient colors from `colors` list in `rosters.yaml` (best-effort).
+    If two colors are provided, creates a gradient role (first color on left, second on right).
+    Attaches a role icon from the team's custom emoji if available.
+    If position_offset is set (e.g. 1, 2, 3), the role is placed above MINIMUM_ROLE_ID in that slot.
     """
     desired = " ".join((role_name or "").strip().split())
     legacy = " ".join((team_name or "").strip().split())
@@ -534,29 +538,176 @@ async def _ensure_team_role(
     # Prefer the rank-prefixed role name.
     role = discord.utils.get(guild.roles, name=desired)
     if role is not None:
-        # Keep it fast: only create roles if missing.
+        # Ensure existing role is above MINIMUM_ROLE_ID if we have an offset
+        if position_offset is not None:
+            server_cfg = config.server_for_guild_id(guild.id)
+            if server_cfg and server_cfg.minimum_role_id:
+                minimum_role = guild.get_role(server_cfg.minimum_role_id)
+                if minimum_role and role.position <= minimum_role.position:
+                    try:
+                        await role.edit(
+                            position=minimum_role.position + position_offset,
+                            reason="Positioned above MINIMUM_ROLE_ID",
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
         return role
 
     # Back-compat: if an old role exists with just the team name, reuse it and rename (best-effort).
     role = discord.utils.get(guild.roles, name=legacy)
     if role is not None and role.name != desired:
         try:
-            await role.edit(name=desired, reason="Auto-renamed team role for rosters")
+            # Try to update icon when renaming
+            emoji_name = emoji_name_for_team(team_name)
+            role_icon = None
+            if emoji_name:
+                emoji_obj = _find_custom_emoji(guild, emoji_name)
+                if emoji_obj:
+                    # Fetch emoji image bytes for role icon
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            response = await client.get(str(emoji_obj.url))
+                            if response.status_code == 200:
+                                role_icon = response.content
+                    except Exception:
+                        # If fetching fails, continue without icon
+                        pass
+            
+            # Parse gradient colors if provided
+            primary_color = None
+            secondary_color = None
+            if role_colors and len(role_colors) >= 1:
+                try:
+                    primary_color = int(str(role_colors[0]).strip(), 0)
+                    if len(role_colors) >= 2:
+                        secondary_color = int(str(role_colors[1]).strip(), 0)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Check if we need to position the role above MINIMUM_ROLE_ID
+            server_cfg = config.server_for_guild_id(guild.id)
+            position = None
+            if position_offset is not None and server_cfg and server_cfg.minimum_role_id:
+                minimum_role = guild.get_role(server_cfg.minimum_role_id)
+                if minimum_role and role.position <= minimum_role.position:
+                    position = minimum_role.position + position_offset
+            
+            edit_kwargs = {
+                "name": desired,
+                "display_icon": role_icon,
+                "reason": "Auto-renamed team role for rosters",
+            }
+            if position is not None:
+                edit_kwargs["position"] = position
+            
+            # Update colors: gradient if both colors provided, solid if one, or keep existing if none
+            if primary_color is not None and secondary_color is not None:
+                # Set gradient colors via HTTP API
+                try:
+                    await guild._state.http.edit_role(
+                        guild.id,
+                        role.id,
+                        colors={
+                            "primary_color": primary_color,
+                            "secondary_color": secondary_color,
+                            "tertiary_color": None,
+                        },
+                        reason="Set gradient colors for team role",
+                    )
+                except Exception:
+                    # If gradient fails, try solid color
+                    if primary_color is not None:
+                        edit_kwargs["colour"] = discord.Colour(primary_color)
+            elif primary_color is not None:
+                edit_kwargs["colour"] = discord.Colour(primary_color)
+            
+            await role.edit(**edit_kwargs)
         except (discord.Forbidden, discord.HTTPException):
             # If we can't rename, we'll just use the legacy role.
             pass
         return role
 
-    colour = discord.Colour(int(role_color)) if role_color is not None else None
+    # Parse gradient colors: first color on left, second on right
+    primary_color = None
+    secondary_color = None
+    if role_colors and len(role_colors) >= 1:
+        try:
+            primary_color = int(str(role_colors[0]).strip(), 0)
+            if len(role_colors) >= 2:
+                secondary_color = int(str(role_colors[1]).strip(), 0)
+        except (ValueError, TypeError):
+            primary_color = None
+            secondary_color = None
+    
+    # Fallback to solid color if only one color provided
+    colour = discord.Colour(primary_color) if primary_color is not None else discord.Colour.default()
+
+    # Find the team's custom emoji for the role icon
+    emoji_name = emoji_name_for_team(team_name)
+    role_icon = None
+    if emoji_name:
+        emoji_obj = _find_custom_emoji(guild, emoji_name)
+        if emoji_obj:
+            # Fetch emoji image bytes for role icon
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(str(emoji_obj.url))
+                    if response.status_code == 200:
+                        role_icon = response.content
+            except Exception:
+                # If fetching fails, continue without icon
+                pass
 
     try:
-        role = await guild.create_role(
-            name=desired,
-            colour=colour or discord.Colour.default(),
-            hoist=True,  # displayed separately on the right
-            mentionable=True,
-            reason="Auto-created team role for rosters",
-        )
+        # Build create_role kwargs
+        create_kwargs = {
+            "name": desired,
+            "hoist": True,  # displayed separately on the right
+            "mentionable": True,
+            "display_icon": role_icon,
+            "reason": "Auto-created team role for rosters",
+        }
+        
+        # Use gradient colors if both are provided, otherwise use solid color
+        if primary_color is not None and secondary_color is not None:
+            # Create role with primary color first
+            role = await guild.create_role(
+                **create_kwargs,
+                colour=colour,  # Set primary color as fallback
+            )
+            # Set gradient colors via HTTP API
+            if role:
+                try:
+                    await guild._state.http.edit_role(
+                        guild.id,
+                        role.id,
+                        colors={
+                            "primary_color": primary_color,
+                            "secondary_color": secondary_color,
+                            "tertiary_color": None,
+                        },
+                        reason="Set gradient colors for team role",
+                    )
+                except Exception:
+                    # If gradient fails, role will have solid color
+                    pass
+        else:
+            # Single color - use solid color
+            role = await guild.create_role(**create_kwargs, colour=colour)
+        
+        # Position the role above MINIMUM_ROLE_ID if configured (each team gets its own slot)
+        if role and position_offset is not None:
+            server_cfg = config.server_for_guild_id(guild.id)
+            if server_cfg and server_cfg.minimum_role_id:
+                minimum_role = guild.get_role(server_cfg.minimum_role_id)
+                if minimum_role and role.position <= minimum_role.position:
+                    try:
+                        await role.edit(
+                            position=minimum_role.position + position_offset,
+                            reason="Positioned above MINIMUM_ROLE_ID",
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
     except discord.Forbidden:
         return None
     except discord.HTTPException:
@@ -1806,13 +1957,35 @@ class SetupView(discord.ui.View):
                 if not isinstance(team_block, dict):
                     continue
 
-                role_color_raw = team_block.get("color")
-                role_color = None
-                if role_color_raw is not None:
-                    try:
-                        role_color = int(str(role_color_raw).strip(), 0)
-                    except ValueError:
-                        role_color = None
+                # Read colors list (for gradient) or fallback to single color
+                colors_raw = team_block.get("colors")
+                role_colors = None
+                if colors_raw is not None:
+                    if isinstance(colors_raw, list):
+                        # Parse list of colors
+                        parsed_colors = []
+                        for color_val in colors_raw:
+                            try:
+                                parsed_colors.append(int(str(color_val).strip(), 0))
+                            except (ValueError, TypeError):
+                                pass
+                        if parsed_colors:
+                            role_colors = parsed_colors
+                    else:
+                        # Fallback: single color value (backward compatibility)
+                        try:
+                            role_colors = [int(str(colors_raw).strip(), 0)]
+                        except ValueError:
+                            role_colors = None
+                
+                # Also check for old "color" field for backward compatibility
+                if role_colors is None:
+                    color_raw = team_block.get("color")
+                    if color_raw is not None:
+                        try:
+                            role_colors = [int(str(color_raw).strip(), 0)]
+                        except ValueError:
+                            role_colors = None
 
                 players = team_block.get("roster")
                 if not isinstance(players, list):
@@ -1828,7 +2001,8 @@ class SetupView(discord.ui.View):
                         interaction.guild,
                         role_name=desired_role_name,
                         team_name=team_name,
-                        role_color=role_color,
+                        role_colors=role_colors,
+                        position_offset=idx,
                     )
                     if role is None:
                         role_failures += 1
