@@ -89,10 +89,11 @@ def default_output_path(input_path: Path) -> Path:
 _TOURNAMENT_PRIZE_POOLS: dict[str, float] = {
     "art": 0.0,
     "prt": 50.0,
-    "mrc": 1250.0,
+    "mrc": 166.0,
     "mrc_swiss": 70.0,
     "rr": 0.0,
     "nc": 0.0,
+    "rpd": 0.0,
 }
 
 
@@ -111,7 +112,7 @@ def infer_tournament_key_from_filename(path: Path) -> Optional[str]:
     name = path.stem.lower()
     if name.startswith("mrc_swiss"):
         return "mrc_swiss"
-    for prefix in ("art", "prt", "mrc", "rr", "nc"):
+    for prefix in ("art", "prt", "mrc", "rr", "nc", "rpd"):
         if name.startswith(prefix):
             return prefix
     return None

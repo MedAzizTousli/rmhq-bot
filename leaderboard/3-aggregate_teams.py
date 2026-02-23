@@ -30,7 +30,18 @@ DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "output"
 TEAM_NAME_MAP: dict[str, str] = {
     "VΞX": "VEX",
     "Sugar Pills": "OVERDOZEE",
-    "ΞØN Esports": "EON Esports"
+    "ΞØN Esports": "EON Esports",
+    "KIN EU": "KIN",
+    "Phantom's": "PHANTOM S",
+    "Sugar Pills": "OVERDOZEE",
+    "Evolv ESPORT": "EVOLV",
+    "JBG - Jung Brutal Gutaussehend": "Jung-Brutal-Gutaussehend",
+    "ASTRA": "ASTRA eSports",
+    "PackMiko": "PackMiko E-sports",
+    "RXM Esports": "RXM",
+    "K7auzPool": "KlauzPool7",
+    "no name": "noName",
+    "noMercy": "noName"
 }
 
 
