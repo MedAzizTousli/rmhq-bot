@@ -1682,6 +1682,12 @@ class SetupView(discord.ui.View):
                         except discord.DiscordException:
                             pass
 
+                    # Publish in announcement channel so it cross-posts to followers.
+                    try:
+                        await msg.publish()
+                    except discord.DiscordException:
+                        pass
+
                 ids.append(msg.id)
             return ids
 
