@@ -41,7 +41,16 @@ TEAM_NAME_MAP: dict[str, str] = {
     "RXM Esports": "RXM",
     "K7auzPool": "KlauzPool7",
     "no name": "noName",
-    "noMercy": "noName"
+    "noMercy": "noName",
+    "100X35": "The Chicks",
+    "SCATTER.": "PlayingDucksᴿᴹ",
+    "Playing-Ducks": "PlayingDucksᴿᴹ",
+    "BENATH REALITY": "BENEATH REALITY",
+    "PHANTOM S": "BENEATH REALITY",
+    "Reborn Xi - real": "Reborn Xi",
+    "NoLimits eSport": "NoLimits eSports",
+    "Entropy": "NoLimits eSports",
+    "FLY KITSUNE": "Guardian Owls"
 }
 
 

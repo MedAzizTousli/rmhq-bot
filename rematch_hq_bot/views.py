@@ -308,7 +308,7 @@ def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
 
-    e = discord.Embed(title="Leaderboard (09/02 -> 22/02)", color=0xbe629b)
+    e = discord.Embed(title="Leaderboard (16/02 -> 01/03)", color=0xbe629b)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
