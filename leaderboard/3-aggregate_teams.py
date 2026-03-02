@@ -50,7 +50,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Reborn Xi - real": "Reborn Xi",
     "NoLimits eSport": "NoLimits eSports",
     "Entropy": "NoLimits eSports",
-    "FLY KITSUNE": "Guardian Owls"
+    "FLY KITSUNE": "Guardian Owls",
+    "Minus Tempø": "La Pasión"
 }
 
 
