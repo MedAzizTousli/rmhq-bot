@@ -32,7 +32,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Sugar Pills": "OVERDOZEE",
     "ΞØN Esports": "EON Esports",
     "KIN EU": "KIN",
-    "Phantom's": "PHANTOM S",
+    "Phantom's": "BENEATH REALITY",
     "Sugar Pills": "OVERDOZEE",
     "Evolv ESPORT": "EVOLV",
     "JBG - Jung Brutal Gutaussehend": "Jung-Brutal-Gutaussehend",
@@ -51,7 +51,19 @@ TEAM_NAME_MAP: dict[str, str] = {
     "NoLimits eSport": "NoLimits eSports",
     "Entropy": "NoLimits eSports",
     "FLY KITSUNE": "Guardian Owls",
-    "Minus Tempø": "La Pasión"
+    "Minus Tempø": "La Pasión",
+    "Renascença": "PlayingDucksᴿᴹ",
+    "IGP™ Ultima Team": "EOZ Ultima",
+    "The Chicks": "Trapani FC",
+    "ANGELS": "chicken sellers",
+    "vaffanculo ghastly": "chicken sellers",
+    "UDG": "Underdog Gaming",
+    "Monarchy": "Monarchy EC",
+    "ELEPHANT": "FC ELEPHANT",
+    "Zatrox Esports": "Devil Esport",
+    "ᴬⁿᵃʳᶜʰʸ": "Anarchy",
+    "MKT NOVA": "InFeriX Esports",
+    "RΞFLEX FC": "REFLEX FC",
 }
 
 
