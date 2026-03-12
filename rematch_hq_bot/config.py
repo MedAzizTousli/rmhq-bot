@@ -135,30 +135,46 @@ def _load_servers() -> dict[int, ServerConfig]:
     for name, block in raw.items():
         if not isinstance(block, dict):
             continue
-        server_id = _as_int(block.get("SERVER_ID"))
-        if not server_id:
+
+        server_id_field = block.get("SERVER_ID")
+
+        # Allow either a single SERVER_ID or a mapping like
+        # SERVER_ID: { PRT: 123, ART: 123, FRT: 456 }
+        server_ids: list[int] = []
+        if isinstance(server_id_field, dict):
+            for _, raw_val in server_id_field.items():
+                sid = _as_int(raw_val)
+                if sid:
+                    server_ids.append(sid)
+        else:
+            sid = _as_int(server_id_field)
+            if sid:
+                server_ids.append(sid)
+
+        if not server_ids:
             continue
 
-        cfg = ServerConfig(
-            name=str(name),
-            server_id=server_id,
-            setup_channel_id=_as_int(block.get("SETUP_CHANNEL_ID")),
-            test_channel_id=_as_int(block.get("TEST_CHANNEL_ID")),
-            results_tournaments_channel_id=_as_int(block.get("RESULTS_TOURNAMENTS_CHANNEL_ID")),
-            upcoming_tournaments_channel_id=_as_int(block.get("UPCOMING_TOURNAMENTS_CHANNEL_ID")),
-            leaderboard_channel_id=_as_int(block.get("LEADERBOARD_CHANNEL_ID")),
-            rosters_channel_id=_as_int(block.get("ROSTERS_CHANNEL_ID")),
-            scrim_forum_channel_id=_as_int(block.get("SCRIM_FORUM_CHANNEL_ID")),
-            scrim_forum_user_id_exclude=_as_int(block.get("SCRIM_FORUM_USER_ID_EXCLUDE")),
-            tournaments_ping_id=_as_int(block.get("TOURNAMENTS_PING_ID")),
-            minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
-            tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
-            hall_of_fame_channel_id=_parse_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
-            sponsors_channel_id=_parse_map_int(block.get("SPONSORS_CHANNEL_ID")),
-            embed_color=_parse_map_int(block.get("EMBED_COLOR")),
-            prize_pool=_parse_map_float(block.get("PRIZE_POOL")),
-        )
-        servers[server_id] = cfg
+        for server_id in server_ids:
+            cfg = ServerConfig(
+                name=str(name),
+                server_id=server_id,
+                setup_channel_id=_as_int(block.get("SETUP_CHANNEL_ID")),
+                test_channel_id=_as_int(block.get("TEST_CHANNEL_ID")),
+                results_tournaments_channel_id=_as_int(block.get("RESULTS_TOURNAMENTS_CHANNEL_ID")),
+                upcoming_tournaments_channel_id=_as_int(block.get("UPCOMING_TOURNAMENTS_CHANNEL_ID")),
+                leaderboard_channel_id=_as_int(block.get("LEADERBOARD_CHANNEL_ID")),
+                rosters_channel_id=_as_int(block.get("ROSTERS_CHANNEL_ID")),
+                scrim_forum_channel_id=_as_int(block.get("SCRIM_FORUM_CHANNEL_ID")),
+                scrim_forum_user_id_exclude=_as_int(block.get("SCRIM_FORUM_USER_ID_EXCLUDE")),
+                tournaments_ping_id=_as_int(block.get("TOURNAMENTS_PING_ID")),
+                minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
+                tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
+                hall_of_fame_channel_id=_parse_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
+                sponsors_channel_id=_parse_map_int(block.get("SPONSORS_CHANNEL_ID")),
+                embed_color=_parse_map_int(block.get("EMBED_COLOR")),
+                prize_pool=_parse_map_float(block.get("PRIZE_POOL")),
+            )
+            servers[server_id] = cfg
 
     if not servers:
         raise SystemExit("No servers found in config.yaml (missing SERVER_ID blocks).")

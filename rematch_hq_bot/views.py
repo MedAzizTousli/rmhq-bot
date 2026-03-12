@@ -33,6 +33,7 @@ _LEADERBOARD_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_aggregat
 _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
 
 _RULEBOOK_URL = "https://www.notion.so/Rulebook-2cd037d9654180bdba21ea03e737d8d8?source=copy_link"
+_FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
 
 
 async def _get_sendable_channel(
@@ -124,12 +125,14 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
     If require_key is set, only return types present in that mapping.
     Falls back to ["PRT", "ART"] if nothing is configured.
     """
-    preferred = ["PRT", "ART"]
+    preferred = ["PRT", "ART", "FRT"]
     mapping = None
     if require_key == "tournament_info_channel_id":
         mapping = server.tournament_info_channel_id
     elif require_key == "hall_of_fame_channel_id":
         mapping = server.hall_of_fame_channel_id
+    elif require_key == "sponsors_channel_id":
+        mapping = server.sponsors_channel_id
 
     if mapping:
         available = {k.strip().upper() for k in mapping.keys() if str(k).strip()}
@@ -174,24 +177,32 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
         return ""
 
 
-def _parse_sponsor_line(line: str) -> tuple[str, str, str] | tuple[None, str]:
+def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, str]:
     """
     Parse either:
-      1) "Team name | Country | DiscordId"
-      2) (legacy) "<amount> — <team name> <country> <discord id/mention>"
+      1) "Team name | Country | DiscordId"  (default amount 10€)
+      2) "Amount | Team name | Country | DiscordId"  (custom amount, e.g. 25€)
+      3) (legacy) "<amount> — <team name> <country> <discord id/mention>"
 
-    Returns (team, flag, mention) or (None, error).
+    Returns (team, flag, mention, amount_display) or (None, error).
     """
     s = (line or "").strip()
     if not s:
         return None, "Empty line."
 
-    # Preferred format: Team | Country | ID
+    default_amount = "10€"
+
+    # Preferred format: [Amount |] Team | Country | ID
     if "|" in s:
         parts = [p.strip() for p in s.split("|")]
-        if len(parts) != 3:
-            return None, f"Expected 3 parts separated by `|` in: `{s}`"
-        team, country_raw, uid_raw = parts
+        if len(parts) == 4:
+            amount_display = parts[0] if parts[0] else default_amount
+            team, country_raw, uid_raw = parts[1], parts[2], parts[3]
+        elif len(parts) == 3:
+            amount_display = default_amount
+            team, country_raw, uid_raw = parts[0], parts[1], parts[2]
+        else:
+            return None, f"Expected 3 or 4 parts (e.g. 'Team | Country | ID' or '25€ | Team | Country | ID') in: `{s}`"
         if not team or not country_raw or not uid_raw:
             return None, f"Missing team/country/id in: `{s}`"
 
@@ -204,7 +215,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str] | tuple[None, str]:
         if not flag:
             return None, f"Couldn't read country/flag `{country_raw}` in: `{s}`"
 
-        return team, flag, mention
+        return team, flag, mention, amount_display
 
     # Prefer em dash separator.
     if "—" in s:
@@ -222,6 +233,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str] | tuple[None, str]:
         return None, f"Missing Discord id/mention in: `{s}`"
 
     mention = f"<@{uid}>"
+    amount_display = amount_raw if amount_raw else default_amount
 
     # Remove uid/mention from rest to parse team + country.
     no_user = _USER_MENTION_RE.sub("", rest).strip()
@@ -242,7 +254,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str] | tuple[None, str]:
     if not flag:
         return None, f"Couldn't read country/flag `{country_raw}` in: `{s}`"
 
-    return team, flag, mention
+    return team, flag, mention, amount_display
 
 
 def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
@@ -308,7 +320,7 @@ def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
 
-    e = discord.Embed(title="Leaderboard (23/02 -> 08/03)", color=0xbe629b)
+    e = discord.Embed(title="Leaderboard (23/02 → 08/03)", color=0xbe629b)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
@@ -1049,6 +1061,8 @@ class TournamentInfoModal(discord.ui.Modal):
             )
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         # Embed color
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
         # Prize pool
@@ -1108,7 +1122,7 @@ class TournamentInfoModal(discord.ui.Modal):
                 channel = None
 
         if channel is None or not hasattr(channel, "send"):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Couldn't find the tournament-info channel. Check `TOURNAMENT_INFO_CHANNEL_ID.{ttype}` in `config.yaml`.",
                 ephemeral=True,
             )
@@ -1121,39 +1135,170 @@ class TournamentInfoModal(discord.ui.Modal):
             )
             if icon_file:
                 kwargs["file"] = icon_file
-            msg = await channel.send(**kwargs)
-
-            # React with a tournament-type emoji (best-effort).
-            # ART previously used "lART" which won't match a normal ":ART:" emoji name.
-            candidates: list[str] = []
-            if ttype in {"PRT", "ART"}:
-                candidates.append(ttype)
-            if ttype == "ART":
-                candidates.append("lART")  # backward-compat if a server actually named it this way
-
-            for emoji_name in candidates:
-                e = _find_guild_emoji_by_name(interaction.guild, emoji_name)
-                if not e:
-                    continue
-                try:
-                    await msg.add_reaction(e)
-                except discord.DiscordException:
-                    pass
-                break
+            await channel.send(**kwargs)
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I don't have permission to post in the tournaments channel.",
                 ephemeral=True,
             )
             return
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Posted in <#{channel.id}>.",
             ephemeral=True,
         )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         print("TournamentInfoModal error:", repr(error))
+        msg = "Something went wrong while creating the tournament info embed."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class FRTTournamentInfoModal(discord.ui.Modal):
+    """Tournament info modal for FRT: edition, Battlefy URL, Date & Time, Mode, Format."""
+
+    edition_number = discord.ui.TextInput(
+        label="Edition number",
+        placeholder="e.g. 1",
+        required=True,
+        max_length=10,
+    )
+    battlefy_url = discord.ui.TextInput(
+        label="Battlefy URL",
+        placeholder="https://battlefy.com/...",
+        required=True,
+        max_length=200,
+    )
+    date_time = discord.ui.TextInput(
+        label="Date & time",
+        placeholder="e.g. 2026-02-11 19:00 (CET) or <t:1739300400>",
+        required=True,
+        max_length=80,
+    )
+    mode = discord.ui.TextInput(
+        label="Mode",
+        placeholder="e.g. Rondo (4v4)",
+        required=True,
+        max_length=80,
+    )
+    format_input = discord.ui.TextInput(
+        label="Format",
+        placeholder="e.g. Single Elimination BO3",
+        required=True,
+        max_length=300,
+        style=discord.TextStyle.paragraph,
+    )
+
+    def __init__(self) -> None:
+        super().__init__(title="FRT Tournament Info")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        ed_raw = (self.edition_number.value or "").strip()
+        m = re.search(r"\d+", ed_raw)
+        if not m:
+            await interaction.response.send_message(
+                "Edition number must contain at least one number.",
+                ephemeral=True,
+            )
+            return
+        edition = int(m.group(0))
+        t_url = (self.battlefy_url.value or "").strip()
+        when = _to_discord_timestamp(self.date_time.value or "")
+        if when is None:
+            when = (self.date_time.value or "").strip() or "-"
+        mode_val = (self.mode.value or "").strip() or "-"
+        format_val = (self.format_input.value or "").strip() or "-"
+
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.response.send_message(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        ttype = "FRT"
+        info_channel_id = (server.tournament_info_channel_id or {}).get(ttype)
+        if not info_channel_id:
+            await interaction.response.send_message(
+                f"This server is missing `TOURNAMENT_INFO_CHANNEL_ID.{ttype}` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        color = (server.embed_color or {}).get(ttype, 0xbe629b)
+
+        embed = discord.Embed(title=f"FRT #{edition}", color=int(color))
+        embed.add_field(name="Battlefy", value=f"[URL]({t_url})" if t_url else "-", inline=True)
+        embed.add_field(name="Entry Fee", value="0€", inline=True)
+        embed.add_field(name="Prize Pool", value="0€", inline=True)
+        embed.add_field(
+            name="Date & time",
+            value=f"{when}\nRegistration closes 1 minute before tournament start.",
+            inline=False,
+        )
+        embed.add_field(
+            name="Mode",
+            value=f"{mode_val} — [Rules]({_FRT_RULES_URL})",
+            inline=False,
+        )
+        embed.add_field(name="Format", value=format_val, inline=False)
+
+        icon_path = find_icon(ttype)
+        icon_file = None
+        if icon_path:
+            filename = icon_path.name
+            icon_file = discord.File(icon_path, filename=filename)
+            embed.set_thumbnail(url=f"attachment://{filename}")
+
+        channel = interaction.guild.get_channel(info_channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(info_channel_id)
+            except discord.DiscordException:
+                channel = None
+
+        if channel is None or not hasattr(channel, "send"):
+            await interaction.followup.send(
+                f"Couldn't find the tournament-info channel. Check `TOURNAMENT_INFO_CHANNEL_ID.{ttype}` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            kwargs = dict(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            )
+            if icon_file:
+                kwargs["file"] = icon_file
+            await channel.send(**kwargs)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to post in the tournaments channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(
+            f"Posted in <#{channel.id}>.",
+            ephemeral=True,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("FRTTournamentInfoModal error:", repr(error))
         msg = "Something went wrong while creating the tournament info embed."
         try:
             if interaction.response.is_done():
@@ -1175,7 +1320,10 @@ class TournamentInfoTypeSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         ttype = (self.values[0] if self.values else "").strip().upper()
-        await interaction.response.send_modal(TournamentInfoModal(tournament_type=ttype))
+        if ttype == "FRT":
+            await interaction.response.send_modal(FRTTournamentInfoModal())
+        else:
+            await interaction.response.send_modal(TournamentInfoModal(tournament_type=ttype))
 
 
 class TournamentInfoTypeView(discord.ui.View):
@@ -1329,6 +1477,153 @@ class HallOfFameModal(discord.ui.Modal):
             pass
 
 
+class FRTHallOfFameModal(discord.ui.Modal):
+    """Hall of Fame modal for FRT: adds Mode field, Mode and Bracket inline."""
+
+    edition_number = discord.ui.TextInput(
+        label="Edition number",
+        placeholder="e.g. 1",
+        required=True,
+        max_length=10,
+    )
+    team_name = discord.ui.TextInput(
+        label="Team name",
+        placeholder="e.g. OVERDOZEE",
+        required=True,
+        max_length=60,
+    )
+    bracket_url = discord.ui.TextInput(
+        label="Bracket URL",
+        placeholder="https://battlefy.com/...",
+        required=True,
+        max_length=200,
+    )
+    mode = discord.ui.TextInput(
+        label="Mode",
+        placeholder="e.g. Rondo (4v4)",
+        required=True,
+        max_length=80,
+    )
+    roster = discord.ui.TextInput(
+        label="Roster (one per line: country + discord id)",
+        placeholder="FR 123456789012345678\nMA <@123456789012345678>\n:flag_es: 123456789012345678",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=600,
+    )
+
+    def __init__(self) -> None:
+        super().__init__(title="FRT Hall of Fame")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.response.send_message(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        ttype = "FRT"
+        hof_channel_id = (server.hall_of_fame_channel_id or {}).get(ttype)
+        if not hof_channel_id:
+            await interaction.response.send_message(
+                f"This server is missing `HALL_OF_FAME_CHANNEL_ID.{ttype}` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        ed_raw = (self.edition_number.value or "").strip()
+        m = re.search(r"\d+", ed_raw)
+        if not m:
+            await interaction.response.send_message("Edition number must contain a number (e.g. `1`).", ephemeral=True)
+            return
+        edition = int(m.group(0))
+
+        team = " ".join((self.team_name.value or "").strip().split())
+        url = (self.bracket_url.value or "").strip()
+        mode_val = (self.mode.value or "").strip() or "-"
+
+        roster_lines, roster_err = _parse_roster(self.roster.value or "")
+        if roster_err:
+            await interaction.response.send_message(
+                "Roster format (one per line):\n"
+                "`FR 123456789012345678`\n"
+                "`:flag_fr: <@123456789012345678>`\n"
+                "`🇫🇷 123456789012345678`\n\n"
+                f"{roster_err}",
+                ephemeral=True,
+            )
+            return
+
+        color = (server.embed_color or {}).get(ttype, 0xbe629b)
+        team_icon_path = find_team_icon(team)
+        team_icon_file = None
+        team_emoji = await _ensure_team_emoji(interaction.guild, team)
+
+        title = f"{ttype} #{edition} Champions — {team}{(' ' + team_emoji) if team_emoji else ''}"
+        embed = discord.Embed(title=title, color=int(color))
+        embed.add_field(name="Mode", value=mode_val, inline=True)
+        embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=True)
+        embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
+
+        if team_icon_path:
+            filename = team_icon_path.name
+            team_icon_file = discord.File(team_icon_path, filename=filename)
+            embed.set_image(url=f"attachment://{filename}")
+
+        channel = interaction.guild.get_channel(hof_channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(hof_channel_id)
+            except discord.DiscordException:
+                channel = None
+
+        if channel is None or not hasattr(channel, "send"):
+            await interaction.response.send_message(
+                f"Couldn't find the Hall of Fame channel. Check `HALL_OF_FAME_CHANNEL_ID.{ttype}` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            kwargs = dict(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+            )
+            if team_icon_file:
+                kwargs["file"] = team_icon_file
+            msg = await channel.send(**kwargs)
+            if team_emoji:
+                try:
+                    await msg.add_reaction(team_emoji)
+                except discord.DiscordException:
+                    pass
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I don't have permission to post in the Hall of Fame channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(f"Posted in <#{channel.id}>.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("FRTHallOfFameModal error:", repr(error))
+        msg = "Something went wrong while creating the Hall of Fame embed."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
 class HallOfFameTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
@@ -1340,7 +1635,10 @@ class HallOfFameTypeSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         ttype = (self.values[0] if self.values else "").strip().upper()
-        await interaction.response.send_modal(HallOfFameModal(tournament_type=ttype))
+        if ttype == "FRT":
+            await interaction.response.send_modal(FRTHallOfFameModal())
+        else:
+            await interaction.response.send_modal(HallOfFameModal(tournament_type=ttype))
 
 
 class HallOfFameTypeView(discord.ui.View):
@@ -1364,14 +1662,15 @@ class SponsorsModal(discord.ui.Modal):
     )
     sponsors = discord.ui.TextInput(
         label="Sponsors (one per line)",
-        placeholder="Orion Esports | Morocco | 263329265594925057",
+        placeholder="Orion Esports | Morocco | 263329265594925057\n25€ | Other Team | France | 123456789",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=1200,
     )
 
-    def __init__(self):
-        super().__init__(title="PRT Sponsors")
+    def __init__(self, *, tournament_type: str):
+        self.tournament_type = (tournament_type or "").strip().upper()
+        super().__init__(title=f"{self.tournament_type} Sponsors")
 
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.guild:
@@ -1386,11 +1685,11 @@ class SponsorsModal(discord.ui.Modal):
             )
             return
 
-        ttype = "PRT"
+        ttype = self.tournament_type or "PRT"
         channel_id = (server.sponsors_channel_id or {}).get(ttype)
         if not channel_id:
             await interaction.response.send_message(
-                "This server is missing `SPONSORS_CHANNEL_ID.PRT` in `config.yaml`.",
+                f"This server is missing `SPONSORS_CHANNEL_ID.{ttype}` in `config.yaml`.",
                 ephemeral=True,
             )
             return
@@ -1413,10 +1712,10 @@ class SponsorsModal(discord.ui.Modal):
             if parsed[0] is None:
                 await interaction.response.send_message(f"Sponsor line error: {parsed[1]}", ephemeral=True)
                 return
-            team, flag, mention = parsed  # type: ignore[misc]
+            team, flag, mention, amount = parsed  # type: ignore[misc]
 
             team_emoji = await _ensure_team_emoji(interaction.guild, team)
-            out_lines.append(f"10€ — {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
+            out_lines.append(f"{amount} — {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
 
         if not out_lines:
             await interaction.response.send_message("Sponsors list is required (at least 1 line).", ephemeral=True)
@@ -1427,7 +1726,7 @@ class SponsorsModal(discord.ui.Modal):
             section = "Sponsors"
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
-        embed = discord.Embed(title=f"PRT #{edition} Sponsors", color=int(color))
+        embed = discord.Embed(title=f"{ttype} #{edition} Sponsors", color=int(color))
         embed.add_field(name=section, value="\n".join(out_lines), inline=False)
         embed.set_footer(text="Huge thanks for the support!")
 
@@ -1440,7 +1739,7 @@ class SponsorsModal(discord.ui.Modal):
 
         if channel is None or not hasattr(channel, "send"):
             await interaction.response.send_message(
-                "Couldn't find the sponsors channel. Check `SPONSORS_CHANNEL_ID.PRT` in `config.yaml`.",
+                f"Couldn't find the sponsors channel. Check `SPONSORS_CHANNEL_ID.{ttype}` in `config.yaml`.",
                 ephemeral=True,
             )
             return
@@ -1474,6 +1773,26 @@ class SponsorsModal(discord.ui.Modal):
                 await interaction.response.send_message(msg, ephemeral=True)
         except discord.DiscordException:
             pass
+
+
+class SponsorsTypeSelect(discord.ui.Select):
+    def __init__(self, *, options: list[discord.SelectOption]):
+        super().__init__(
+            placeholder="Select tournament type…",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        ttype = (self.values[0] if self.values else "").strip().upper()
+        await interaction.response.send_modal(SponsorsModal(tournament_type=ttype))
+
+
+class SponsorsTypeView(discord.ui.View):
+    def __init__(self, *, options: list[discord.SelectOption]):
+        super().__init__(timeout=120)
+        self.add_item(SponsorsTypeSelect(options=options))
 
 
 class SetupView(discord.ui.View):
@@ -2486,7 +2805,28 @@ class SetupPartView(discord.ui.View):
             await interaction.response.send_message("Admins only.", ephemeral=True)
             return
 
-        await interaction.response.send_modal(SponsorsModal())
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.response.send_message(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        kinds = _pick_tournament_types(server, require_key="sponsors_channel_id")
+        options = [
+            discord.SelectOption(
+                label=k,
+                value=k,
+                description=f"Create a {k} sponsors embed",
+            )
+            for k in kinds
+        ]
+        await interaction.response.send_message(
+            "Select which tournament you want to create the sponsors embed for.",
+            ephemeral=True,
+            view=SponsorsTypeView(options=options),
+        )
 
 
 class AcademyRoleSelect(discord.ui.Select):

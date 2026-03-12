@@ -64,6 +64,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴬⁿᵃʳᶜʰʸ": "Anarchy",
     "MKT NOVA": "InFeriX Esports",
     "RΞFLEX FC": "REFLEX FC",
+    "Golden Requiem": "HAKI"
 }
 
 
