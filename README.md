@@ -1,3 +1,5 @@
+ssh -i "C:\Users\moham\.ssh\gcp-vm" mohamedaziztousli@34.133.215.130
+
 # Minimal Discord bot (Python)
 
 Slash command: **`/setup`** (admin-only) posts an embed + buttons in your setup channel.

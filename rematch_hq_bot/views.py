@@ -257,7 +257,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
     return team, flag, mention, amount_display
 
 
-def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
+def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None = None) -> discord.Embed:
     """
     Build an embed with 3 columns:
       Placement | Team | Points
@@ -320,7 +320,13 @@ def _format_leaderboard_embed(rows: list[dict[str, str]]) -> discord.Embed:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
 
-    e = discord.Embed(title="Leaderboard (23/02 → 08/03)", color=0xbe629b)
+    title_suffix = (date_range or "").strip()
+    if title_suffix:
+        title = f"Leaderboard ({title_suffix})"
+    else:
+        title = "Leaderboard"
+
+    e = discord.Embed(title=title, color=0xbe629b)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
@@ -1795,6 +1801,168 @@ class SponsorsTypeView(discord.ui.View):
         self.add_item(SponsorsTypeSelect(options=options))
 
 
+class LeaderboardModal(discord.ui.Modal):
+    date_range = discord.ui.TextInput(
+        label="Date range",
+        placeholder="23/02 -> 08/03",
+        required=True,
+        max_length=40,
+    )
+
+    def __init__(self) -> None:
+        super().__init__(title="Leaderboard")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        # Normalize date range (replace -> with →, collapse spaces).
+        raw = (self.date_range.value or "").strip()
+        date_range = " ".join(raw.replace("->", "→").split())
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("Admins only.", ephemeral=True)
+            return
+
+        if not _LEADERBOARD_CSV.exists():
+            await interaction.followup.send(
+                "Couldn't find `csv_points/leaderboard.csv`.\n"
+                "Generate it first by running: `python leaderboard.py`",
+                ephemeral=True,
+            )
+            return
+
+        import csv
+
+        with _LEADERBOARD_CSV.open("r", newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                await interaction.followup.send("Leaderboard CSV has no header row.", ephemeral=True)
+                return
+
+            required_cols = {"Rank", "Team", "Points"}
+            missing = [c for c in required_cols if c not in set(reader.fieldnames)]
+            if missing:
+                await interaction.followup.send(
+                    f"Leaderboard CSV missing columns: {', '.join(missing)}",
+                    ephemeral=True,
+                )
+                return
+
+            rows = list(reader)
+
+        def _points_key(r: dict[str, str]) -> int:
+            try:
+                return int(round(float((r.get("Points") or '').strip() or "0")))
+            except ValueError:
+                return 0
+
+        top = sorted(rows, key=lambda r: (-_points_key(r), (r.get("Team") or "").casefold()))[:48]
+        embed = _format_leaderboard_embed(top, date_range=date_range)
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        leaderboard_channel_id = server.leaderboard_channel_id if server else None
+        if not leaderboard_channel_id:
+            await interaction.followup.send(
+                "This server is missing `LEADERBOARD_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(leaderboard_channel_id)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(leaderboard_channel_id)
+            except discord.DiscordException:
+                channel = None
+
+        if channel is None or not hasattr(channel, "send"):
+            await interaction.followup.send(
+                "Couldn't find the leaderboard channel. Check `LEADERBOARD_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
+            await interaction.followup.send(
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
+                ephemeral=True,
+            )
+            return
+
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
+
+        try:
+            ping_id = server.tournaments_ping_id if server else None
+            ping = None
+            if ping_id:
+                role = interaction.guild.get_role(ping_id)
+                ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
+            preview_msg = await test_channel.send(
+                content=f"[PREVIEW] Leaderboard\n{ping or ''}".strip(),
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to post in the test channel.",
+                ephemeral=True,
+            )
+            return
+
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(leaderboard_channel_id))
+            if dest is None:
+                return "Couldn't find the leaderboard channel."
+
+            ping_id2 = server.tournaments_ping_id if server else None
+            ping2 = None
+            if ping_id2:
+                role2 = guild.get_role(ping_id2)
+                ping2 = f"<@&{ping_id2}>" if role2 else f"<@{ping_id2}>"
+
+            try:
+                await dest.send(
+                    content=ping2,
+                    embed=embed,
+                    allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=False),
+                )
+            except discord.Forbidden:
+                return "I don't have permission to post in the leaderboard channel."
+
+            return f"Posted in <#{leaderboard_channel_id}>."
+
+        await interaction.followup.send(
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{leaderboard_channel_id}>.",
+            ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=[preview_msg.id],
+                publish_fn=_publish,
+            ),
+        )
+
 class SetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -2050,147 +2218,18 @@ class SetupView(discord.ui.View):
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
             return
 
-        # Always acknowledge quickly to avoid "Unknown interaction" timeouts.
-        # We'll use followups for all user-facing responses after this.
-        try:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-        except discord.NotFound:
-            # Interaction token already expired/invalid; nothing we can do.
-            return
-
         if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
             server = config.server_for_guild_id(interaction.guild.id)
             required = server.setup_channel_id if server else None
             if required is not None:
-                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
         if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
+            await interaction.response.send_message("Admins only.", ephemeral=True)
             return
 
-        if not _LEADERBOARD_CSV.exists():
-            await interaction.followup.send(
-                "Couldn't find `csv_points/leaderboard.csv`.\n"
-                "Generate it first by running: `python leaderboard.py`",
-                ephemeral=True,
-            )
-            return
-
-        # Read leaderboard.csv and post the top 48 teams.
-        import csv
-
-        with _LEADERBOARD_CSV.open("r", newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            if reader.fieldnames is None:
-                await interaction.followup.send("Leaderboard CSV has no header row.", ephemeral=True)
-                return
-
-            required = {"Rank", "Team", "Points"}
-            missing = [c for c in required if c not in set(reader.fieldnames)]
-            if missing:
-                await interaction.followup.send(
-                    f"Leaderboard CSV missing columns: {', '.join(missing)}",
-                    ephemeral=True,
-                )
-                return
-
-            rows = list(reader)
-
-        # Take top 48 by Points (highest first).
-        def _points_key(r: dict[str, str]) -> int:
-            try:
-                return int(round(float((r.get("Points") or "").strip() or "0")))
-            except ValueError:
-                return 0
-
-        top = sorted(rows, key=lambda r: (-_points_key(r), (r.get("Team") or "").casefold()))[:48]
-        embed = _format_leaderboard_embed(top)
-
-        server = config.server_for_guild_id(interaction.guild.id)
-        leaderboard_channel_id = server.leaderboard_channel_id if server else None
-        if not leaderboard_channel_id:
-            await interaction.followup.send(
-                "This server is missing `LEADERBOARD_CHANNEL_ID` in `config.yaml`.",
-                ephemeral=True,
-            )
-            return
-
-        channel = interaction.guild.get_channel(leaderboard_channel_id)
-        if channel is None:
-            try:
-                channel = await interaction.guild.fetch_channel(leaderboard_channel_id)
-            except discord.DiscordException:
-                channel = None
-
-        if channel is None or not hasattr(channel, "send"):
-            await interaction.followup.send(
-                "Couldn't find the leaderboard channel. Check `LEADERBOARD_CHANNEL_ID` in `config.yaml`.",
-                ephemeral=True,
-            )
-            return
-
-        test_channel_id = server.test_channel_id if server else None
-        if not test_channel_id:
-            await interaction.followup.send(
-                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
-                ephemeral=True,
-            )
-            return
-        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
-        if test_channel is None:
-            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
-            return
-
-        try:
-            ping_id = server.tournaments_ping_id if server else None
-            ping = None
-            if ping_id:
-                role = interaction.guild.get_role(ping_id)
-                ping = f"<@&{ping_id}>" if role else f"<@{ping_id}>"
-            preview_msg = await test_channel.send(
-                content=f"[PREVIEW] Leaderboard\n{ping or ''}".strip(),
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
-            )
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "I don't have permission to post in the test channel.",
-                ephemeral=True,
-            )
-            return
-
-        async def _publish(confirm_interaction: discord.Interaction) -> str:
-            guild = confirm_interaction.guild
-            if guild is None:
-                return "Run this in the server."
-            dest = await _get_sendable_channel(guild, int(leaderboard_channel_id))
-            if dest is None:
-                return "Couldn't find the leaderboard channel."
-
-            ping_id2 = server.tournaments_ping_id if server else None
-            ping2 = None
-            if ping_id2:
-                role2 = guild.get_role(ping_id2)
-                ping2 = f"<@&{ping_id2}>" if role2 else f"<@{ping_id2}>"
-
-            await dest.send(
-                content=ping2,
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
-            )
-            return f"Posted leaderboard in <#{leaderboard_channel_id}>."
-
-        await interaction.followup.send(
-            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{leaderboard_channel_id}>.",
-            ephemeral=True,
-            view=ConfirmPostView(
-                requester_id=interaction.user.id,
-                test_channel_id=int(test_channel_id),
-                preview_message_ids=[preview_msg.id],
-                publish_fn=_publish,
-            ),
-        )
+        await interaction.response.send_modal(LeaderboardModal())
 
     @discord.ui.button(
         label="👑 Rosters",
