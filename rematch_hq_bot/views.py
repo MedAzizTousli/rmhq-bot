@@ -2427,10 +2427,18 @@ class SetupView(discord.ui.View):
                         reactions.append(team_emoji)
                 bits.append(role_tag)
                 team_heading = "### " + " ".join(bits)
+
+                # Optional Discord link for the team, shown under the heading and above the roster
+                discord_url = team_block.get("discord")
+                description_parts: list[str] = [team_heading]
+                if isinstance(discord_url, str) and discord_url.strip():
+                    description_parts.append(f"### <:Discord:1475149721369837721> [Discord Server]({discord_url.strip()})")
+                description_parts.extend(parsed_lines)
+
                 e = discord.Embed(
                     title=None,
                     color=0xbe629b,
-                    description=team_heading + "\n" + "\n".join(parsed_lines),
+                    description="\n".join(description_parts),
                 )
 
                 if icon_path:
