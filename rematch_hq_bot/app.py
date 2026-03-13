@@ -23,6 +23,8 @@ from .views import AcademySetupView, SetupPartView, SetupView
 class RematchHQBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
@@ -110,6 +112,7 @@ async def setup(interaction: discord.Interaction):
             "📅 **Tournament Today:** Post today's tournaments.\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
+            "💖 **Compliment:** Tag someone to post a compliment.\n"
             "🗑️ **Purge Scrims:** Delete all posts in the scrims forum."
         ),
         color=0xbe629b,

@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timezone
+import random
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -2509,6 +2510,103 @@ class SetupView(discord.ui.View):
                 preview_message_ids=[preview_msg.id],
                 publish_fn=_publish,
             ),
+        )
+
+    @discord.ui.button(
+        label="💖 Compliment",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:compliment",
+    )
+    async def compliment(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        compliments_channel_id = server.compliments_channel_id if server else None
+        if not compliments_channel_id:
+            await interaction.response.send_message(
+                "This server is missing `COMPLIMENTS_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        guild = interaction.guild
+        assert guild is not None
+
+        compliments_ping_id = server.compliments_ping_id if server else None
+        compliments_role = guild.get_role(compliments_ping_id) if compliments_ping_id else None
+
+        members: list[discord.Member] = []
+        try:
+            async for m in guild.fetch_members(limit=None):
+                if m.bot:
+                    continue
+                members.append(m)
+        except discord.DiscordException:
+            members = []
+            for m in guild.members:
+                if m.bot:
+                    continue
+                members.append(m)
+
+        if not members:
+            await interaction.followup.send("Couldn't find any non-bot members to compliment.", ephemeral=True)
+            return
+
+        chosen = random.choice(members)
+
+        compliments_channel = await _get_sendable_channel(guild, int(compliments_channel_id))
+        if compliments_channel is None:
+            await interaction.followup.send("Couldn't find the compliments channel.", ephemeral=True)
+            return
+
+        if compliments_role is not None:
+            try:
+                for member in members:
+                    if member.id == chosen.id:
+                        continue
+                    if compliments_role in getattr(member, "roles", []):
+                        await member.remove_roles(
+                            compliments_role,
+                            reason=f"Compliment of the day reassigned by {interaction.user} ({interaction.user.id})",
+                        )
+
+                if compliments_role not in getattr(chosen, "roles", []):
+                    await chosen.add_roles(
+                        compliments_role,
+                        reason=f"Compliment of the day assigned by {interaction.user} ({interaction.user.id})",
+                    )
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        content = (
+            f"Hey **{chosen.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
+            "Pick a **rival player or a rival team** and say something positive about them."
+        )
+
+        try:
+            await compliments_channel.send(content)
+        except discord.DiscordException:
+            await interaction.followup.send("Failed to send the compliment message.", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            f"Picked {chosen.mention} for the compliment of the day in <#{int(compliments_channel_id)}>.",
+            ephemeral=True,
         )
 
     @discord.ui.button(
