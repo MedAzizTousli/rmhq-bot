@@ -2574,24 +2574,41 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("Couldn't find the compliments channel.", ephemeral=True)
             return
 
-        if compliments_role is not None:
-            try:
+        if not hasattr(compliments_channel, "set_permissions") or not hasattr(compliments_channel, "overwrites"):
+            await interaction.followup.send("The compliments channel does not support permission overwrites.", ephemeral=True)
+            return
+
+        try:
+            if compliments_role is not None:
                 for member in members:
-                    if member.id == chosen.id:
-                        continue
                     if compliments_role in getattr(member, "roles", []):
                         await member.remove_roles(
                             compliments_role,
-                            reason=f"Compliment of the day reassigned by {interaction.user} ({interaction.user.id})",
+                            reason=f"Compliment channel now uses member permissions; updated by {interaction.user} ({interaction.user.id})",
                         )
 
-                if compliments_role not in getattr(chosen, "roles", []):
-                    await chosen.add_roles(
-                        compliments_role,
-                        reason=f"Compliment of the day assigned by {interaction.user} ({interaction.user.id})",
-                    )
-            except (discord.Forbidden, discord.HTTPException):
-                pass
+            for target in list(compliments_channel.overwrites):
+                if not isinstance(target, discord.Member):
+                    continue
+                await compliments_channel.set_permissions(
+                    target,
+                    overwrite=None,
+                    reason=f"Cleared previous compliment channel member permissions by {interaction.user} ({interaction.user.id})",
+                )
+
+            chosen_overwrite = compliments_channel.overwrites_for(chosen)
+            chosen_overwrite.send_messages = True
+            await compliments_channel.set_permissions(
+                chosen,
+                overwrite=chosen_overwrite,
+                reason=f"Compliment of the day assigned by {interaction.user} ({interaction.user.id})",
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "I couldn't update the compliments channel permissions. Check my channel permissions and role position.",
+                ephemeral=True,
+            )
+            return
 
         content = (
             f"Hey **{chosen.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
