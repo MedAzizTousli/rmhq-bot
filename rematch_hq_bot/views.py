@@ -110,6 +110,72 @@ class ConfirmPostView(discord.ui.View):
             await _delete_messages_best_effort(test_ch, self.preview_message_ids)
         await interaction.followup.send("Cancelled (preview deleted).", ephemeral=True)
 
+
+class ComplimentPreviewView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        requester_id: int,
+        test_channel_id: int,
+        preview_message_ids: list[int],
+        reroll_fn,
+        publish_fn,
+    ):
+        super().__init__(timeout=300)
+        self.requester_id = requester_id
+        self.test_channel_id = int(test_channel_id)
+        self.preview_message_ids = list(preview_message_ids)
+        self.reroll_fn = reroll_fn
+        self.publish_fn = publish_fn
+
+    async def _delete_preview(self, guild: discord.Guild) -> None:
+        test_ch = await _get_sendable_channel(guild, self.test_channel_id)
+        if test_ch is not None and self.preview_message_ids:
+            await _delete_messages_best_effort(test_ch, self.preview_message_ids)
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await self._delete_preview(interaction.guild)
+        result = await self.publish_fn(interaction)
+        self.stop()
+        await interaction.followup.send(result or "Confirmed and posted.", ephemeral=True)
+
+    @discord.ui.button(label="Pick Another", style=discord.ButtonStyle.primary)
+    async def reroll(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can reroll.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await self._delete_preview(interaction.guild)
+        self.preview_message_ids, result = await self.reroll_fn(interaction)
+        await interaction.followup.send(result, ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=False)
+        await self._delete_preview(interaction.guild)
+        self.stop()
+        await interaction.followup.send("Cancelled (preview deleted).", ephemeral=True)
+
 def _find_guild_emoji_by_name(guild: discord.Guild, name: str) -> str:
     want = (name or "").strip().lower()
     if not want:
@@ -2542,6 +2608,14 @@ class SetupView(discord.ui.View):
             )
             return
 
+        test_channel_id = server.test_channel_id if server else None
+        if not test_channel_id:
+            await interaction.response.send_message(
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         guild = interaction.guild
@@ -2567,7 +2641,10 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("Couldn't find any non-bot members to compliment.", ephemeral=True)
             return
 
-        chosen = random.choice(members)
+        test_channel = await _get_sendable_channel(guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
 
         compliments_channel = await _get_sendable_channel(guild, int(compliments_channel_id))
         if compliments_channel is None:
@@ -2578,52 +2655,93 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("The compliments channel does not support permission overwrites.", ephemeral=True)
             return
 
-        try:
-            if compliments_role is not None:
-                for member in members:
-                    if compliments_role in getattr(member, "roles", []):
-                        await member.remove_roles(
-                            compliments_role,
-                            reason=f"Compliment channel now uses member permissions; updated by {interaction.user} ({interaction.user.id})",
-                        )
+        chosen: discord.Member | None = None
 
-            for target in list(compliments_channel.overwrites):
-                if not isinstance(target, discord.Member):
-                    continue
+        def _render_content(member: discord.Member) -> str:
+            return (
+                f"Hey **{member.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
+                "Pick a **rival player or a rival team** and say something positive about them."
+            )
+
+        async def _post_preview(*, exclude_member_id: int | None = None) -> tuple[list[int], str]:
+            nonlocal chosen
+
+            candidates = [m for m in members if exclude_member_id is None or m.id != exclude_member_id]
+            if not candidates:
+                candidates = list(members)
+            if not candidates:
+                raise RuntimeError("Couldn't find any non-bot members to compliment.")
+
+            chosen = random.choice(candidates)
+
+            preview_content = "[PREVIEW] Compliment\n" + _render_content(chosen)
+            preview_msg = await test_channel.send(
+                content=preview_content,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            )
+            return [preview_msg.id], f"Preview posted in <#{int(test_channel_id)}> for {chosen.mention}."
+
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            if chosen is None:
+                return "No compliment target is selected."
+
+            try:
+                if compliments_role is not None:
+                    for member in members:
+                        if compliments_role in getattr(member, "roles", []):
+                            await member.remove_roles(
+                                compliments_role,
+                                reason=f"Compliment channel now uses member permissions; updated by {confirm_interaction.user} ({confirm_interaction.user.id})",
+                            )
+
+                for target in list(compliments_channel.overwrites):
+                    if not isinstance(target, discord.Member):
+                        continue
+                    await compliments_channel.set_permissions(
+                        target,
+                        overwrite=None,
+                        reason=f"Cleared previous compliment channel member permissions by {confirm_interaction.user} ({confirm_interaction.user.id})",
+                    )
+
+                chosen_overwrite = compliments_channel.overwrites_for(chosen)
+                chosen_overwrite.send_messages = True
                 await compliments_channel.set_permissions(
-                    target,
-                    overwrite=None,
-                    reason=f"Cleared previous compliment channel member permissions by {interaction.user} ({interaction.user.id})",
+                    chosen,
+                    overwrite=chosen_overwrite,
+                    reason=f"Compliment of the day assigned by {confirm_interaction.user} ({confirm_interaction.user.id})",
                 )
+            except (discord.Forbidden, discord.HTTPException):
+                return "I couldn't update the compliments channel permissions. Check my channel permissions and role position."
 
-            chosen_overwrite = compliments_channel.overwrites_for(chosen)
-            chosen_overwrite.send_messages = True
-            await compliments_channel.set_permissions(
-                chosen,
-                overwrite=chosen_overwrite,
-                reason=f"Compliment of the day assigned by {interaction.user} ({interaction.user.id})",
-            )
-        except (discord.Forbidden, discord.HTTPException):
-            await interaction.followup.send(
-                "I couldn't update the compliments channel permissions. Check my channel permissions and role position.",
-                ephemeral=True,
-            )
-            return
+            try:
+                await compliments_channel.send(_render_content(chosen))
+            except discord.DiscordException:
+                return "Failed to send the compliment message."
 
-        content = (
-            f"Hey **{chosen.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
-            "Pick a **rival player or a rival team** and say something positive about them."
-        )
+            return f"Posted compliment of the day for {chosen.mention} in <#{int(compliments_channel_id)}>."
 
         try:
-            await compliments_channel.send(content)
-        except discord.DiscordException:
-            await interaction.followup.send("Failed to send the compliment message.", ephemeral=True)
+            preview_message_ids, preview_status = await _post_preview()
+        except (RuntimeError, discord.DiscordException) as e:
+            await interaction.followup.send(str(e), ephemeral=True)
             return
+
+        async def _reroll(reroll_interaction: discord.Interaction) -> tuple[list[int], str]:
+            try:
+                return await _post_preview(exclude_member_id=chosen.id if chosen is not None and len(members) > 1 else None)
+            except (RuntimeError, discord.DiscordException) as e:
+                return [], str(e)
 
         await interaction.followup.send(
-            f"Picked {chosen.mention} for the compliment of the day in <#{int(compliments_channel_id)}>.",
+            preview_status + f" Confirm to post in <#{int(compliments_channel_id)}> or pick another person.",
             ephemeral=True,
+            view=ComplimentPreviewView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=preview_message_ids,
+                reroll_fn=_reroll,
+                publish_fn=_publish,
+            ),
         )
 
     @discord.ui.button(
