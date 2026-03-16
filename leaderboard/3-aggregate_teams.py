@@ -43,8 +43,6 @@ TEAM_NAME_MAP: dict[str, str] = {
     "no name": "noName",
     "noMercy": "noName",
     "100X35": "The Chicks",
-    "SCATTER.": "PlayingDucksᴿᴹ",
-    "Playing-Ducks": "PlayingDucksᴿᴹ",
     "BENATH REALITY": "BENEATH REALITY",
     "PHANTOM S": "BENEATH REALITY",
     "Reborn Xi - real": "Reborn Xi",
@@ -52,9 +50,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Entropy": "NoLimits eSports",
     "FLY KITSUNE": "Guardian Owls",
     "Minus Tempø": "La Pasión",
-    "Renascença": "PlayingDucksᴿᴹ",
     "IGP™ Ultima Team": "EOZ Ultima",
-    "The Chicks": "Trapani FC",
+    "The Chicks": "Karasuno",
     "ANGELS": "chicken sellers",
     "vaffanculo ghastly": "chicken sellers",
     "UDG": "Underdog Gaming",
@@ -64,7 +61,15 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴬⁿᵃʳᶜʰʸ": "Anarchy",
     "MKT NOVA": "InFeriX Esports",
     "RΞFLEX FC": "REFLEX FC",
-    "Golden Requiem": "HAKI"
+    "Golden Requiem": "HAKI",
+    "SCATTER.": "Team MOIRAI",
+    "Playing-Ducks": "Team MOIRAI",
+    "PlayingDucksᴿᴹ": "Team MOIRAI",
+    "Trapani FC": "Karasuno",
+    "Karasuno 烏": "Karasuno",
+    "Samba Cookers (FEEL THE AURA)": "Samba Cookers",
+    "Samba Cooker": "Samba Cookers",
+    "√ ᴠᴏʀᴛᴇx": "Vortex"
 }
 
 

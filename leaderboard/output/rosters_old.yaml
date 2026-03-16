@@ -4,6 +4,7 @@ Overdozee:
   - 0xC4CFD8
   - 0x000000
   roster:
+  - France: 1150348320649265212
   - France: 231453477102944257
   - England: 375517781149483008
   - France: 1370813691506855946
@@ -19,6 +20,17 @@ Str1ve Esports:
   - Portugal: 569643066940719124
   - Portugal: 260051205634523137
   - Portugal: 381672095916228610
+Monarchy EC:
+  discord: https://discord.gg/monarchyec
+  colors:
+  - 0xE3E3E3
+  - 0x7B1C37
+  roster:
+  - Germany: 535833406387257345
+  - Italy: 529306299893153823
+  - Italy: 666651298816589845
+  - Italy: 775755060880867328
+  - Egypt: 532094137973997571
 Wildcats:
   discord: https://discord.gg/jCxW3QA5Jh
   colors:
@@ -30,17 +42,6 @@ Wildcats:
   - Bulgaria: 433104649969467393
   - Poland: 273909057356693507
   - Denmark: 157978056621948928
-Yurei:
-  discord: https://discord.gg/fpuKCZ8qsj
-  colors:
-  - 0xB50D31
-  - 0x000000
-  roster:
-  - France: 246012198198050816
-  - France: 258753879246766082
-  - Belgium: 925393201773281321
-  - France: 596562129100996618
-  - France: 581783342542749708
 Kin:
   discord: https://discord.gg/E45RNWpYHT
   colors:
@@ -51,16 +52,7 @@ Kin:
   - France: 1438966863957856417
   - Italy: 473224186035175444
   - Portugal: 424551885685522444
-Origin:
-  discord: https://discord.gg/RSjMVhCqg4
-  colors:
-  - 0x8A4AD8
-  - 0x52DAF9
-  roster:
-  - France: 730335543703109653
-  - France: 201738813297393664
-  - France: 302853421005012994
-  - Spain: 391621357546242059
+  - Italy: 602197237136752653
 Majin Purple:
   discord: https://discord.gg/majinclub
   colors:
@@ -83,3 +75,14 @@ Beneath Reality:
   - France: 1360915418717618256
   - France: 564843719644413959
   - France: 1411025571873554644
+Yurei:
+  discord: https://discord.gg/fpuKCZ8qsj
+  colors:
+  - 0xB50D31
+  - 0x000000
+  roster:
+  - France: 246012198198050816
+  - France: 258753879246766082 # Louperie instead of Miru
+  - Belgium: 925393201773281321
+  - France: 596562129100996618
+  - France: 581783342542749708
