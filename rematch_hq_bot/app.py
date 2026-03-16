@@ -113,7 +113,9 @@ async def setup(interaction: discord.Interaction):
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
             "💖 **Compliment:** Tag someone to post a compliment.\n"
-            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum."
+            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum.\n"
+            "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
+            "📈 **Calculate Predictions:** Show the top predictors for a given month."
         ),
         color=0xbe629b,
     )

@@ -1,4 +1,6 @@
+import csv
 import re
+from collections import Counter
 from datetime import datetime, timezone
 import random
 from pathlib import Path
@@ -28,10 +30,13 @@ _TS_RE = re.compile(r"<t:(\d+)(?::[tTdDfFR])?>")
 _CET = ZoneInfo("Europe/Paris")
 _USER_MENTION_RE = re.compile(r"<@!?(\d+)>")
 _FLAG_ALIAS_RE = re.compile(r"^:flag_([a-z]{2}):$", re.IGNORECASE)
+_MESSAGE_LINK_RE = re.compile(r"https?://(?:canary\.)?discord(?:app)?\.com/channels/\d+/(\d+)/(\d+)")
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LEADERBOARD_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_aggregated.csv"
 _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
+_PREDICTIONS_CSV = _REPO_ROOT / "leaderboard" / "output" / "predictions.csv"
+_PREDICTION_FIELDNAMES = ("poll_date", "message_id", "question", "winning_answer", "all_people", "right_people")
 
 _RULEBOOK_URL = "https://www.notion.so/Rulebook-2cd037d9654180bdba21ea03e737d8d8?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
@@ -60,6 +65,272 @@ async def _delete_messages_best_effort(
             await msg.delete()
         except Exception:
             pass
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    normalized = " ".join((text or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _poll_media_text(media: object) -> str:
+    if media is None:
+        return ""
+
+    if isinstance(media, str):
+        return " ".join(media.split())
+
+    text = getattr(media, "text", None)
+    if text:
+        return " ".join(str(text).split())
+
+    if isinstance(media, dict):
+        raw_text = media.get("text")
+        if raw_text:
+            return " ".join(str(raw_text).split())
+
+    # Some poll payloads can come back in shapes where `text` is empty but the
+    # object still stringifies to the question content.
+    rendered = " ".join(str(media).split())
+    if rendered and "object at 0x" not in rendered:
+        return rendered
+
+    return ""
+
+
+def _poll_question_text(poll: discord.Poll) -> str:
+    direct = " ".join(str(getattr(poll, "question", "") or "").split())
+    if direct:
+        return direct
+
+    fallback = _poll_media_text(getattr(poll, "_question_media", None))
+    if fallback:
+        return fallback
+
+    return ""
+
+
+def _prediction_date_for_message(message: discord.Message) -> str:
+    return message.created_at.astimezone(_CET).strftime("%Y-%m-%d")
+
+
+def _format_prediction_people(voters: list[discord.abc.User]) -> str:
+    entries: list[str] = []
+    seen: set[int] = set()
+    for voter in voters:
+        if voter.id in seen:
+            continue
+        seen.add(voter.id)
+        entries.append(str(voter.id))
+    return "; ".join(sorted(entries))
+
+
+async def _collect_poll_voters(poll: discord.Poll) -> list[discord.abc.User]:
+    voters: list[discord.abc.User] = []
+    seen: set[int] = set()
+
+    for answer in poll.answers:
+        async for voter in answer.voters(limit=None):
+            if voter.id in seen:
+                continue
+            seen.add(voter.id)
+            voters.append(voter)
+
+    return voters
+
+
+def _load_prediction_rows() -> list[dict[str, str]]:
+    if not _PREDICTIONS_CSV.exists():
+        return []
+
+    with _PREDICTIONS_CSV.open("r", newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError("Predictions CSV has no header row.")
+
+        missing = [name for name in _PREDICTION_FIELDNAMES if name not in set(reader.fieldnames)]
+        if missing:
+            raise ValueError(f"Predictions CSV is missing columns: {', '.join(missing)}")
+
+        return list(reader)
+
+
+def _get_prediction_row(message_id: int) -> dict[str, str] | None:
+    wanted = str(int(message_id))
+    for row in _load_prediction_rows():
+        if (row.get("message_id") or "").strip() == wanted:
+            return row
+    return None
+
+
+def _append_prediction_row(row: dict[str, str]) -> None:
+    _PREDICTIONS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    file_exists = _PREDICTIONS_CSV.exists()
+    with _PREDICTIONS_CSV.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(_PREDICTION_FIELDNAMES))
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({name: row.get(name, "") for name in _PREDICTION_FIELDNAMES})
+
+
+def _parse_prediction_people(raw_value: str) -> list[str]:
+    values = [part.strip() for part in (raw_value or "").split(";")]
+    return [value for value in values if value and value.isdigit()]
+
+
+def _parse_prediction_month(raw_value: str) -> tuple[int, int]:
+    raw = (raw_value or "").strip()
+    if not raw:
+        raise ValueError("Enter a month/year like `03/2026` or `2026-03`.")
+
+    for fmt in ("%m/%Y", "%Y-%m", "%Y/%m", "%m-%Y"):
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            return parsed.year, parsed.month
+        except ValueError:
+            continue
+
+    raise ValueError("Invalid month/year. Use `03/2026` or `2026-03`.")
+
+
+def _prediction_month_label(year: int, month: int) -> str:
+    return datetime(year=year, month=month, day=1).strftime("%B %Y")
+
+
+def _hall_of_fame_channel_id(
+    server: config.ServerConfig,
+    *,
+    tournament_type: str | None = None,
+) -> int | None:
+    value = server.hall_of_fame_channel_id
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, dict) and tournament_type:
+        return value.get(tournament_type.strip().upper())
+    return None
+
+
+def _build_prediction_results_embed(
+    *,
+    year: int,
+    month: int,
+    results: list[tuple[str, int, int]],
+    polls_count: int,
+) -> discord.Embed:
+    label = _prediction_month_label(year, month)
+    embed = discord.Embed(
+        title=f"🔮 Predictor of the Month — {label}",
+        color=0xBE629B,
+    )
+
+    if not results:
+        embed.description = "No prediction participation found for that month."
+        return embed
+
+    user_vals = [
+        f"<@{user_id}>"
+        for user_id, _correct, _total in results[:10]
+    ]
+    correct_vals = [
+        str(correct)
+        for _user_id, correct, _total in results[:10]
+    ]
+    accuracy_vals = [
+        f"{(correct / total) * 100:.1f}%"
+        for _user_id, correct, total in results[:10]
+    ]
+
+    embed.add_field(name="User", value="\n".join(user_vals) or "-", inline=True)
+    embed.add_field(name="Correct", value="\n".join(correct_vals) or "-", inline=True)
+    embed.add_field(name="Accuracy", value="\n".join(accuracy_vals) or "-", inline=True)
+    embed.set_footer(text=f"{polls_count} tracked poll(s) in {label}")
+    return embed
+
+
+def _parse_message_locator(raw_value: str) -> tuple[int, int | None]:
+    raw = (raw_value or "").strip()
+    if not raw:
+        raise ValueError("Enter a poll message ID.")
+
+    link_match = _MESSAGE_LINK_RE.search(raw)
+    if link_match:
+        channel_id = int(link_match.group(1))
+        message_id = int(link_match.group(2))
+        return message_id, channel_id
+
+    if raw.isdigit():
+        return int(raw), None
+
+    raise ValueError("Enter a numeric Discord message ID or a full Discord message link.")
+
+
+async def _find_message_by_id(
+    guild: discord.Guild,
+    message_id: int,
+    *,
+    channel_id: int | None = None,
+    client: discord.Client | None = None,
+) -> discord.Message | None:
+    if channel_id is not None:
+        channel = guild.get_channel_or_thread(channel_id)
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except discord.DiscordException:
+                channel = None
+        if channel is not None and hasattr(channel, "fetch_message"):
+            try:
+                return await channel.fetch_message(message_id)  # type: ignore[attr-defined]
+            except discord.DiscordException:
+                return None
+
+    if client is not None:
+        cached = discord.utils.get(getattr(client, "cached_messages", []), id=message_id)
+        if cached is not None and cached.guild and cached.guild.id == guild.id:
+            return cached
+
+    around = discord.utils.snowflake_time(message_id)
+    seen_channel_ids: set[int] = set()
+    searchable_channels: list[discord.abc.Messageable] = []
+
+    for channel in guild.text_channels:
+        if channel.id in seen_channel_ids:
+            continue
+        seen_channel_ids.add(channel.id)
+        searchable_channels.append(channel)
+
+    for thread in guild.threads:
+        if thread.id in seen_channel_ids:
+            continue
+        seen_channel_ids.add(thread.id)
+        searchable_channels.append(thread)
+
+    try:
+        fetched_channels = await guild.fetch_channels()
+    except discord.DiscordException:
+        fetched_channels = []
+
+    for channel in fetched_channels:
+        if not isinstance(channel, discord.TextChannel):
+            continue
+        if channel.id in seen_channel_ids:
+            continue
+        seen_channel_ids.add(channel.id)
+        searchable_channels.append(channel)
+
+    for channel in searchable_channels:
+        history = getattr(channel, "history", None)
+        if not callable(history):
+            continue
+        try:
+            async for message in channel.history(limit=100, around=around):  # type: ignore[attr-defined]
+                if message.id == message_id:
+                    return message
+        except (discord.Forbidden, discord.HTTPException, TypeError):
+            continue
+
+    return None
 
 
 class ConfirmPostView(discord.ui.View):
@@ -176,6 +447,421 @@ class ComplimentPreviewView(discord.ui.View):
         self.stop()
         await interaction.followup.send("Cancelled (preview deleted).", ephemeral=True)
 
+
+class PredictionAnswerSelect(discord.ui.Select):
+    def __init__(
+        self,
+        *,
+        requester_id: int,
+        poll_message_id: int,
+        poll_channel_id: int,
+        answers: list[discord.PollAnswer],
+    ):
+        options = [
+            discord.SelectOption(
+                label=_truncate_text(answer.text or f"Option {index}", 100),
+                value=str(answer.id),
+                description=_truncate_text(f"{answer.vote_count} vote(s)", 100),
+            )
+            for index, answer in enumerate(answers, start=1)
+        ]
+        super().__init__(
+            placeholder="Choose the correct poll answer…",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+        self.requester_id = int(requester_id)
+        self.poll_message_id = int(poll_message_id)
+        self.poll_channel_id = int(poll_channel_id)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("Only the admin who opened this can submit the winner.", ephemeral=True)
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            existing = _get_prediction_row(self.poll_message_id)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        if existing is not None:
+            await interaction.followup.send(
+                "That poll is already tracked.\n"
+                f"Date: `{existing.get('poll_date', '')}`\n"
+                f"Winning answer: {existing.get('winning_answer', '') or '-'}",
+                ephemeral=True,
+            )
+            return
+
+        message = await _find_message_by_id(
+            interaction.guild,
+            self.poll_message_id,
+            channel_id=self.poll_channel_id,
+            client=interaction.client,
+        )
+        if message is None:
+            await interaction.followup.send("I couldn't fetch that poll message anymore.", ephemeral=True)
+            return
+
+        poll = message.poll
+        if poll is None:
+            await interaction.followup.send("That message no longer contains a poll.", ephemeral=True)
+            return
+
+        answer = poll.get_answer(int(self.values[0]))
+        if answer is None:
+            await interaction.followup.send("I couldn't find the selected answer on that poll.", ephemeral=True)
+            return
+
+        voters: list[discord.abc.User] = []
+        try:
+            async for voter in answer.voters(limit=None):
+                voters.append(voter)
+        except discord.DiscordException:
+            await interaction.followup.send("I couldn't fetch the poll voters. Check my permissions and try again.", ephemeral=True)
+            return
+
+        try:
+            all_voters = await _collect_poll_voters(poll)
+        except discord.DiscordException:
+            await interaction.followup.send("I couldn't fetch the full poll voter list. Check my permissions and try again.", ephemeral=True)
+            return
+
+        question = _poll_question_text(poll) or "(Untitled poll)"
+        winning_answer = " ".join((answer.text or "").split()) or f"Answer {answer.id}"
+        all_people = _format_prediction_people(all_voters)
+        right_people = _format_prediction_people(voters)
+
+        try:
+            _append_prediction_row(
+                {
+                    "poll_date": _prediction_date_for_message(message),
+                    "message_id": str(message.id),
+                    "question": question,
+                    "winning_answer": winning_answer,
+                    "all_people": all_people,
+                    "right_people": right_people,
+                }
+            )
+        except OSError as e:
+            await interaction.followup.send(f"Failed to write predictions CSV: {e}", ephemeral=True)
+            return
+
+        if self.view is not None:
+            self.view.stop()
+            try:
+                if interaction.message is not None and hasattr(interaction.message, "edit"):
+                    await interaction.message.edit(view=None)
+            except Exception:
+                pass
+
+        people_summary = right_people or "No one voted for the correct answer."
+        await interaction.followup.send(
+            "Prediction saved.\n"
+            f"Question: **{question}**\n"
+            f"Winning answer: **{winning_answer}**\n"
+            f"Correct voters: {people_summary}\n"
+            f"CSV: `{_PREDICTIONS_CSV.relative_to(_REPO_ROOT)}`",
+            ephemeral=True,
+        )
+
+
+class PredictionAnswerView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        requester_id: int,
+        poll_message_id: int,
+        poll_channel_id: int,
+        answers: list[discord.PollAnswer],
+    ):
+        super().__init__(timeout=300)
+        self.add_item(
+            PredictionAnswerSelect(
+                requester_id=requester_id,
+                poll_message_id=poll_message_id,
+                poll_channel_id=poll_channel_id,
+                answers=answers,
+            )
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("PredictionAnswerView error:", repr(error))
+        msg = "Prediction failed while saving. Check terminal logs."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class PredictionPollModal(discord.ui.Modal, title="Prediction"):
+    poll_message = discord.ui.TextInput(
+        label="Poll message ID or link",
+        placeholder="e.g. 1451234567890123456",
+        required=True,
+        max_length=200,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("Admins only.", ephemeral=True)
+            return
+
+        try:
+            poll_message_id, channel_id = _parse_message_locator(self.poll_message.value)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        try:
+            existing = _get_prediction_row(poll_message_id)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        if existing is not None:
+            await interaction.followup.send(
+                "That poll is already tracked.\n"
+                f"Date: `{existing.get('poll_date', '')}`\n"
+                f"Winning answer: {existing.get('winning_answer', '') or '-'}",
+                ephemeral=True,
+            )
+            return
+
+        message = await _find_message_by_id(
+            interaction.guild,
+            poll_message_id,
+            channel_id=channel_id,
+            client=interaction.client,
+        )
+        if message is None:
+            await interaction.followup.send(
+                "I couldn't find that poll from the ID alone. If it's in an older or hidden channel, paste the full Discord message link instead.",
+                ephemeral=True,
+            )
+            return
+
+        poll = message.poll
+        if poll is None:
+            await interaction.followup.send("That message does not contain a Discord poll.", ephemeral=True)
+            return
+
+        if not poll.is_finalized():
+            await interaction.followup.send(
+                "That poll is still open. Close or finalize it first so I can record the final winners.",
+                ephemeral=True,
+            )
+            return
+
+        answers = list(poll.answers)
+        if not answers:
+            await interaction.followup.send("That poll does not have any answers to choose from.", ephemeral=True)
+            return
+
+        question = _poll_question_text(poll) or "(Untitled poll)"
+        options_text = "\n".join(
+            f"`{index}` {answer.text or f'Answer {answer.id}'}"
+            for index, answer in enumerate(answers, start=1)
+        )
+
+        embed = discord.Embed(
+            title="Prediction",
+            description="Choose the correct answer from the dropdown below.",
+            color=0xBE629B,
+        )
+        embed.add_field(name="Question", value=_truncate_text(question, 1024), inline=False)
+        embed.add_field(name="Options", value=_truncate_text(options_text, 1024), inline=False)
+        embed.add_field(
+            name="Poll info",
+            value=(
+                f"Date: `{_prediction_date_for_message(message)}`\n"
+                f"Message ID: `{message.id}`\n"
+                f"Channel: {message.channel.mention}"
+            ),
+            inline=False,
+        )
+
+        await interaction.followup.send(
+            embed=embed,
+            ephemeral=True,
+            view=PredictionAnswerView(
+                requester_id=interaction.user.id,
+                poll_message_id=message.id,
+                poll_channel_id=message.channel.id,
+                answers=answers,
+            ),
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("PredictionPollModal error:", repr(error))
+        msg = "Prediction failed while loading the poll. Check terminal logs."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class PredictionResultsModal(discord.ui.Modal, title="Calculate Predictions"):
+    month_year = discord.ui.TextInput(
+        label="Month / year",
+        placeholder="e.g. 03/2026 or 2026-03",
+        required=True,
+        max_length=20,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("Admins only.", ephemeral=True)
+            return
+
+        try:
+            year, month = _parse_prediction_month(self.month_year.value)
+            rows = _load_prediction_rows()
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        correct_counts: Counter[str] = Counter()
+        total_counts: Counter[str] = Counter()
+        polls_count = 0
+        for row in rows:
+            poll_date = (row.get("poll_date") or "").strip()
+            try:
+                parsed_date = datetime.strptime(poll_date, "%Y-%m-%d")
+            except ValueError:
+                continue
+
+            if parsed_date.year != year or parsed_date.month != month:
+                continue
+
+            polls_count += 1
+            all_people = set(_parse_prediction_people(row.get("all_people") or ""))
+            right_people = set(_parse_prediction_people(row.get("right_people") or ""))
+
+            # Backward compatibility for older rows that were saved before `all_people` existed.
+            if not all_people and right_people:
+                all_people = set(right_people)
+
+            for user_id in all_people:
+                total_counts[user_id] += 1
+            for user_id in right_people:
+                correct_counts[user_id] += 1
+
+        results = [
+            (user_id, correct_counts.get(user_id, 0), total)
+            for user_id, total in total_counts.items()
+            if total > 0
+        ]
+        sorted_results = sorted(
+            results,
+            key=lambda item: (
+                -item[1],
+                -(item[1] / item[2]),
+                -item[2],
+                int(item[0]),
+            ),
+        )
+        embed = _build_prediction_results_embed(
+            year=year,
+            month=month,
+            results=sorted_results,
+            polls_count=polls_count,
+        )
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.followup.send(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        hof_channel_id = _hall_of_fame_channel_id(server)
+        if not hof_channel_id:
+            await interaction.followup.send(
+                "This server is missing `HALL_OF_FAME_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        channel = await _get_sendable_channel(interaction.guild, int(hof_channel_id))
+        if channel is None:
+            await interaction.followup.send(
+                "Couldn't find the Hall of Fame channel. Check `HALL_OF_FAME_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await channel.send(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to post in the Hall of Fame channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(f"Posted in <#{int(hof_channel_id)}>.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("PredictionResultsModal error:", repr(error))
+        msg = "Prediction calculation failed. Check terminal logs."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
 def _find_guild_emoji_by_name(guild: discord.Guild, name: str) -> str:
     want = (name or "").strip().lower()
     if not want:
@@ -201,7 +887,7 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
     elif require_key == "sponsors_channel_id":
         mapping = server.sponsors_channel_id
 
-    if mapping:
+    if isinstance(mapping, dict) and mapping:
         available = {k.strip().upper() for k in mapping.keys() if str(k).strip()}
         kinds = [k for k in preferred if k in available]
         return kinds or preferred
@@ -1461,7 +2147,7 @@ class HallOfFameModal(discord.ui.Modal):
             return
 
         ttype = self.tournament_type or "PRT"
-        hof_channel_id = (server.hall_of_fame_channel_id or {}).get(ttype)
+        hof_channel_id = _hall_of_fame_channel_id(server, tournament_type=ttype)
         if not hof_channel_id:
             await interaction.response.send_message(
                 f"This server is missing `HALL_OF_FAME_CHANNEL_ID.{ttype}` in `config.yaml`.",
@@ -1613,7 +2299,7 @@ class FRTHallOfFameModal(discord.ui.Modal):
             return
 
         ttype = "FRT"
-        hof_channel_id = (server.hall_of_fame_channel_id or {}).get(ttype)
+        hof_channel_id = _hall_of_fame_channel_id(server, tournament_type=ttype)
         if not hof_channel_id:
             await interaction.response.send_message(
                 f"This server is missing `HALL_OF_FAME_CHANNEL_ID.{ttype}` in `config.yaml`.",
@@ -2591,8 +3277,9 @@ class SetupView(discord.ui.View):
 
     @discord.ui.button(
         label="💖 Compliment",
-        style=discord.ButtonStyle.secondary,
+        style=discord.ButtonStyle.danger,
         custom_id="rematchhq:compliment",
+        row=1,
     )
     async def compliment(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -2759,6 +3446,7 @@ class SetupView(discord.ui.View):
         label="🗑️ Purge Scrims",
         style=discord.ButtonStyle.danger,
         custom_id="rematchhq:purge_scrims",
+        row=1,
     )
     async def purge_scrims(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -2796,6 +3484,54 @@ class SetupView(discord.ui.View):
                 exclude_user_id=(int(exclude_uid) if exclude_uid else None),
             ),
         )
+
+    @discord.ui.button(
+        label="🔮 Add Prediction",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:prediction",
+        row=1,
+    )
+    async def prediction(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(PredictionPollModal())
+
+    @discord.ui.button(
+        label="📈 Calculate Predictions",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:calculate_predictions",
+        row=1,
+    )
+    async def calculate_predictions(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Admins only.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(PredictionResultsModal())
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("SetupView error:", repr(error))

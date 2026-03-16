@@ -68,7 +68,7 @@ class ServerConfig:
 
     # Setup-part settings (per tournament type like "PRT", "ART").
     tournament_info_channel_id: dict[str, int] | None = None
-    hall_of_fame_channel_id: dict[str, int] | None = None
+    hall_of_fame_channel_id: int | dict[str, int] | None = None
     sponsors_channel_id: dict[str, int] | None = None
     embed_color: dict[str, int] | None = None
     prize_pool: dict[str, float] | None = None
@@ -105,6 +105,13 @@ def _parse_map_int(v) -> dict[str, int] | None:
         if key and val is not None:
             out[key] = val
     return out or None
+
+
+def _parse_int_or_map_int(v) -> int | dict[str, int] | None:
+    scalar = _as_int(v)
+    if scalar is not None:
+        return scalar
+    return _parse_map_int(v)
 
 
 def _parse_map_float(v) -> dict[str, float] | None:
@@ -175,7 +182,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 compliments_ping_id=_as_int(block.get("COMPLIMENTS_PING_ID")),
                 minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
                 tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
-                hall_of_fame_channel_id=_parse_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
+                hall_of_fame_channel_id=_parse_int_or_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
                 sponsors_channel_id=_parse_map_int(block.get("SPONSORS_CHANNEL_ID")),
                 embed_color=_parse_map_int(block.get("EMBED_COLOR")),
                 prize_pool=_parse_map_float(block.get("PRIZE_POOL")),
