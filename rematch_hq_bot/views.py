@@ -1102,6 +1102,12 @@ class TournamentInfoModal(discord.ui.Modal):
         required=True,
         max_length=80,
     )
+    prize_pool_input = discord.ui.TextInput(
+        label="Prize pool",
+        placeholder="e.g. 50€ (leave blank to use default)",
+        required=False,
+        max_length=40,
+    )
 
     def __init__(self, *, tournament_type: str):
         self.tournament_type = (tournament_type or "").strip().upper()
@@ -1111,6 +1117,7 @@ class TournamentInfoModal(discord.ui.Modal):
         t_name = " ".join((self.tournament_name.value or "").strip().split())
         t_url = (self.battlefy_url.value or "").strip()
         when = _to_discord_timestamp(self.date_time.value or "")
+        prize_pool_raw = " ".join((self.prize_pool_input.value or "").strip().split())
 
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -1139,7 +1146,11 @@ class TournamentInfoModal(discord.ui.Modal):
         # Embed color
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
         # Prize pool
-        prize_pool = (server.prize_pool or {}).get(ttype, 50.0)
+        default_prize_pool = (server.prize_pool or {}).get(ttype, 50.0)
+        if prize_pool_raw:
+            prize_pool_display = prize_pool_raw
+        else:
+            prize_pool_display = f"{default_prize_pool:g}€"
 
         embed = discord.Embed(title=t_name or "Tournament", color=int(color))
         # Row 1 (inline): Battlefy | Rules | Fees & Rewards
@@ -1147,7 +1158,7 @@ class TournamentInfoModal(discord.ui.Modal):
         embed.add_field(name="Rules", value=f"[URL]({_RULEBOOK_URL})", inline=True)
         embed.add_field(
             name="Fees & Rewards",
-            value=f"__Entry Fee__: 0€\n__Prize Pool__: {prize_pool:g}€",
+            value=f"__Entry Fee__: 0€\n__Prize Pool__: {prize_pool_display}",
             inline=True,
         )
         # Rows below (stacked)
