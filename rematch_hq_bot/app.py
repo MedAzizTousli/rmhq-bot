@@ -143,6 +143,7 @@ async def setup_part(interaction: discord.Interaction):
         title="PART Setup",
         description="""🏆 **Tournament Info:** Create a tournament info embed.\n
                     🥇 **Hall of Fame:** Create a hall of fame embed.\n
+                    📊 **Leaderboard:** Post the current leaderboard.\n
                     💰 **Sponsors:** Create a sponsors embed.\n
         """,
         color=0xbe629b,

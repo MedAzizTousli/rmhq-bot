@@ -51,7 +51,7 @@ class ServerConfig:
     test_channel_id: int | None = None
     results_tournaments_channel_id: int | None = None
     upcoming_tournaments_channel_id: int | None = None
-    leaderboard_channel_id: int | None = None
+    leaderboard_channel_id: int | dict[str, int] | None = None
     rosters_channel_id: int | None = None
     scrim_forum_channel_id: int | None = None
     scrim_forum_user_id_exclude: int | None = None
@@ -173,7 +173,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 test_channel_id=_as_int(block.get("TEST_CHANNEL_ID")),
                 results_tournaments_channel_id=_as_int(block.get("RESULTS_TOURNAMENTS_CHANNEL_ID")),
                 upcoming_tournaments_channel_id=_as_int(block.get("UPCOMING_TOURNAMENTS_CHANNEL_ID")),
-                leaderboard_channel_id=_as_int(block.get("LEADERBOARD_CHANNEL_ID")),
+                leaderboard_channel_id=_parse_int_or_map_int(block.get("LEADERBOARD_CHANNEL_ID")),
                 rosters_channel_id=_as_int(block.get("ROSTERS_CHANNEL_ID")),
                 scrim_forum_channel_id=_as_int(block.get("SCRIM_FORUM_CHANNEL_ID")),
                 scrim_forum_user_id_exclude=_as_int(block.get("SCRIM_FORUM_USER_ID_EXCLUDE")),
