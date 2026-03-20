@@ -87,7 +87,7 @@ def _truncate_text(text: str, limit: int) -> str:
     normalized = " ".join((text or "").split())
     if len(normalized) <= limit:
         return normalized
-    return normalized[: max(0, limit - 1)].rstrip() + "…"
+    return normalized[: max(0, limit - 1)].rstrip() + "â€¦"
 
 
 def _poll_media_text(media: object) -> str:
@@ -249,7 +249,7 @@ def _build_prediction_results_embed(
 ) -> discord.Embed:
     label = _prediction_month_label(year, month)
     embed = discord.Embed(
-        title=f"🔮 Predictor of the Month — {label}",
+        title=f"ðŸ”® Predictor of the Month â€” {label}",
         color=0xBE629B,
     )
 
@@ -380,7 +380,7 @@ class ConfirmPostView(discord.ui.View):
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can confirm.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -398,7 +398,7 @@ class ConfirmPostView(discord.ui.View):
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can cancel.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -436,7 +436,7 @@ class ComplimentPreviewView(discord.ui.View):
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can confirm.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -451,7 +451,7 @@ class ComplimentPreviewView(discord.ui.View):
     @discord.ui.button(label="Pick Another", style=discord.ButtonStyle.primary)
     async def reroll(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can reroll.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can reroll.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -465,7 +465,7 @@ class ComplimentPreviewView(discord.ui.View):
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can cancel.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -495,7 +495,7 @@ class PredictionAnswerSelect(discord.ui.Select):
             for index, answer in enumerate(answers, start=1)
         ]
         super().__init__(
-            placeholder="Choose the correct poll answer…",
+            placeholder="Choose the correct poll answerâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -506,7 +506,7 @@ class PredictionAnswerSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can submit the winner.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can submit the winner.", ephemeral=True)
             return
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -658,10 +658,6 @@ class PredictionPollModal(discord.ui.Modal, title="Prediction"):
                 await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
-            return
-
         try:
             poll_message_id, channel_id = _parse_message_locator(self.poll_message.value)
         except ValueError as e:
@@ -783,10 +779,6 @@ class PredictionResultsModal(discord.ui.Modal, title="Calculate Predictions"):
             if required is not None:
                 await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
-            return
 
         try:
             year, month = _parse_prediction_month(self.month_year.value)
@@ -964,9 +956,9 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
 def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, str]:
     """
     Parse either:
-      1) "Team name | Country | DiscordId"  (default amount 10€)
-      2) "Amount | Team name | Country | DiscordId"  (custom amount, e.g. 25€)
-      3) (legacy) "<amount> — <team name> <country> <discord id/mention>"
+      1) "Team name | Country | DiscordId"  (default amount 10â‚¬)
+      2) "Amount | Team name | Country | DiscordId"  (custom amount, e.g. 25â‚¬)
+      3) (legacy) "<amount> â€” <team name> <country> <discord id/mention>"
 
     Returns (team, flag, mention, amount_display) or (None, error).
     """
@@ -974,7 +966,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
     if not s:
         return None, "Empty line."
 
-    default_amount = "10€"
+    default_amount = "10â‚¬"
 
     # Preferred format: [Amount |] Team | Country | ID
     if "|" in s:
@@ -986,7 +978,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
             amount_display = default_amount
             team, country_raw, uid_raw = parts[0], parts[1], parts[2]
         else:
-            return None, f"Expected 3 or 4 parts (e.g. 'Team | Country | ID' or '25€ | Team | Country | ID') in: `{s}`"
+            return None, f"Expected 3 or 4 parts (e.g. 'Team | Country | ID' or '25â‚¬ | Team | Country | ID') in: `{s}`"
         if not team or not country_raw or not uid_raw:
             return None, f"Missing team/country/id in: `{s}`"
 
@@ -1002,12 +994,12 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
         return team, flag, mention, amount_display
 
     # Prefer em dash separator.
-    if "—" in s:
-        amount_raw, rest = (part.strip() for part in s.split("—", 1))
+    if "â€”" in s:
+        amount_raw, rest = (part.strip() for part in s.split("â€”", 1))
     elif "-" in s:
         amount_raw, rest = (part.strip() for part in s.split("-", 1))
     else:
-        return None, f"Missing separator '—' in: `{s}`"
+        return None, f"Missing separator 'â€”' in: `{s}`"
 
     if not amount_raw or not rest:
         return None, f"Invalid sponsor line: `{s}`"
@@ -1083,16 +1075,16 @@ def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None
     for idx, r in enumerate(sorted_rows):
         team = " ".join((r.get("Team") or "").split())
         if len(team) > max_team:
-            team = team[: max_team - 1] + "…"
+            team = team[: max_team - 1] + "â€¦"
 
         # Replace 1/2/3 with medal emojis in the Placement column (but keep tie ranges like "1-2").
         pl = placement_labels[idx]
         if pl == "1":
-            pl = "🥇"
+            pl = "ðŸ¥‡"
         elif pl == "2":
-            pl = "🥈"
+            pl = "ðŸ¥ˆ"
         elif pl == "3":
-            pl = "🥉"
+            pl = "ðŸ¥‰"
         placement_vals.append(pl)
         pts_str = str(to_points_int(r.get("Points", "")))
 
@@ -1353,8 +1345,8 @@ def _split_entry_prize_and_time(raw: str) -> tuple[str, str, str] | None:
 
     Accepted separators: "|" or "/"
     Examples:
-      "€10 | €200 | 2026-02-11 19:00"
-      "€10 / €200 / <t:1739300400>"
+      "â‚¬10 | â‚¬200 | 2026-02-11 19:00"
+      "â‚¬10 / â‚¬200 / <t:1739300400>"
     """
     s = raw.strip()
     if not s:
@@ -1710,12 +1702,12 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
       <discord id or mention> <country>
 
     Country accepted as:
-      - 🇫🇷 (flag emoji)
+      - ðŸ‡«ðŸ‡· (flag emoji)
       - :flag_fr:
       - FR (ISO-2)
       - France (common names only)
 
-    Output lines: "🇫🇷 <@123...>"
+    Output lines: "ðŸ‡«ðŸ‡· <@123...>"
     Returns (lines, error_message)
     """
     lines_in = (raw or "").splitlines()
@@ -1740,7 +1732,7 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
         if not flag:
             return [], (
                 f"Couldn't read a country/flag from: `{rest}`.\n"
-                "Use `FR`, `:flag_fr:`, or `🇫🇷` (or a common country name like `France`)."
+                "Use `FR`, `:flag_fr:`, or `ðŸ‡«ðŸ‡·` (or a common country name like `France`)."
             )
 
         out.append(f"{flag} <@{uid}>")
@@ -1758,12 +1750,12 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
       <discord id or mention> <country>
 
     Country accepted as:
-      - 🇫🇷 (flag emoji)
+      - ðŸ‡«ðŸ‡· (flag emoji)
       - :flag_fr:
       - FR (ISO-2)
       - common country names (limited list)
 
-    Output lines: "🇫🇷 <@123...>"
+    Output lines: "ðŸ‡«ðŸ‡· <@123...>"
     Returns (lines, error_message)
     """
     lines_in = (raw or "").splitlines()
@@ -1787,7 +1779,7 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
         if not flag:
             return [], (
                 f"Couldn't read a country/flag from: `{rest}`.\n"
-                "Use `FR`, `:flag_fr:`, or `🇫🇷` (or a common country name like `France`)."
+                "Use `FR`, `:flag_fr:`, or `ðŸ‡«ðŸ‡·` (or a common country name like `France`)."
             )
 
         out.append(f"{flag} <@{uid}>")
@@ -1813,7 +1805,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     entry_and_prize = discord.ui.TextInput(
         label="Entry | Prize | Date & time",
-        placeholder="e.g. €10 | €200 | 2026-02-11 19:00",
+        placeholder="e.g. â‚¬10 | â‚¬200 | 2026-02-11 19:00",
         required=True,
         max_length=120,
     )
@@ -1826,7 +1818,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     winning_roster = discord.ui.TextInput(
         label="Winning roster",
-        placeholder="One per line: <@id> FR  (or :flag_fr: / 🇫🇷)",
+        placeholder="One per line: <@id> FR  (or :flag_fr: / ðŸ‡«ðŸ‡·)",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=400,
@@ -1845,7 +1837,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         entry_prize_time = _split_entry_prize_and_time(self.entry_and_prize.value or "")
         if not entry_prize_time:
             await interaction.response.send_message(
-                "Entry/Prize/Date format: `€10 | €200 | 2026-02-11 19:00`",
+                "Entry/Prize/Date format: `â‚¬10 | â‚¬200 | 2026-02-11 19:00`",
                 ephemeral=True,
             )
             return
@@ -1862,7 +1854,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
                 "Winning roster format (one per line):\n"
                 "`<@123456789012345678> FR`\n"
                 "`123456789012345678 :flag_fr:`\n"
-                "`<@123456789012345678> 🇫🇷`\n\n"
+                "`<@123456789012345678> ðŸ‡«ðŸ‡·`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
@@ -1989,7 +1981,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 class TournamentInfoModal(discord.ui.Modal):
     tournament_name = discord.ui.TextInput(
         label="Tournament name",
-        placeholder="e.g. PRT #9 — Rematch Weekly Cup",
+        placeholder="e.g. PRT #9 â€” Rematch Weekly Cup",
         required=True,
         max_length=100,
     )
@@ -2007,7 +1999,7 @@ class TournamentInfoModal(discord.ui.Modal):
     )
     prize_pool_input = discord.ui.TextInput(
         label="Prize pool",
-        placeholder="e.g. 50€ (leave blank to use default)",
+        placeholder="e.g. 50â‚¬ (leave blank to use default)",
         required=False,
         max_length=40,
     )
@@ -2053,7 +2045,7 @@ class TournamentInfoModal(discord.ui.Modal):
         if prize_pool_raw:
             prize_pool_display = prize_pool_raw
         else:
-            prize_pool_display = f"{default_prize_pool:g}€"
+            prize_pool_display = f"{default_prize_pool:g}â‚¬"
 
         embed = discord.Embed(title=t_name or "Tournament", color=int(color))
         # Row 1 (inline): Battlefy | Rules | Fees & Rewards
@@ -2061,7 +2053,7 @@ class TournamentInfoModal(discord.ui.Modal):
         embed.add_field(name="Rules", value=f"[URL]({_RULEBOOK_URL})", inline=True)
         embed.add_field(
             name="Fees & Rewards",
-            value=f"__Entry Fee__: 0€\n__Prize Pool__: {prize_pool_display}",
+            value=f"__Entry Fee__: 0â‚¬\n__Prize Pool__: {prize_pool_display}",
             inline=True,
         )
         # Rows below (stacked)
@@ -2229,8 +2221,8 @@ class FRTTournamentInfoModal(discord.ui.Modal):
 
         embed = discord.Embed(title=f"FRT #{edition}", color=int(color))
         embed.add_field(name="Battlefy", value=f"[URL]({t_url})" if t_url else "-", inline=True)
-        embed.add_field(name="Entry Fee", value="0€", inline=True)
-        embed.add_field(name="Prize Pool", value="0€", inline=True)
+        embed.add_field(name="Entry Fee", value="0â‚¬", inline=True)
+        embed.add_field(name="Prize Pool", value="0â‚¬", inline=True)
         embed.add_field(
             name="Date & time",
             value=f"{when}\nRegistration closes 1 minute before tournament start.",
@@ -2238,7 +2230,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         )
         embed.add_field(
             name="Mode",
-            value=f"{mode_val} — [Rules]({_FRT_RULES_URL})",
+            value=f"{mode_val} â€” [Rules]({_FRT_RULES_URL})",
             inline=False,
         )
         embed.add_field(name="Format", value=format_val, inline=False)
@@ -2299,7 +2291,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
 class TournamentInfoTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament type…",
+            placeholder="Select tournament typeâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -2389,7 +2381,7 @@ class HallOfFameModal(discord.ui.Modal):
                 "Roster format (one per line):\n"
                 "`FR 123456789012345678`\n"
                 "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
+                "`ðŸ‡«ðŸ‡· 123456789012345678`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
@@ -2404,7 +2396,7 @@ class HallOfFameModal(discord.ui.Modal):
         # Try to use (or best-effort create) the custom emoji.
         team_emoji = await _ensure_team_emoji(interaction.guild, team)
 
-        title = f"{ttype} #{edition} Champions — {team}{(' ' + team_emoji) if team_emoji else ''}"
+        title = f"{ttype} #{edition} Champions â€” {team}{(' ' + team_emoji) if team_emoji else ''}"
         embed = discord.Embed(title=title, color=int(color))
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=False)
         embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
@@ -2541,7 +2533,7 @@ class FRTHallOfFameModal(discord.ui.Modal):
                 "Roster format (one per line):\n"
                 "`FR 123456789012345678`\n"
                 "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
+                "`ðŸ‡«ðŸ‡· 123456789012345678`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
@@ -2552,7 +2544,7 @@ class FRTHallOfFameModal(discord.ui.Modal):
         team_icon_file = None
         team_emoji = await _ensure_team_emoji(interaction.guild, team)
 
-        title = f"{ttype} #{edition} Champions — {team}{(' ' + team_emoji) if team_emoji else ''}"
+        title = f"{ttype} #{edition} Champions â€” {team}{(' ' + team_emoji) if team_emoji else ''}"
         embed = discord.Embed(title=title, color=int(color))
         embed.add_field(name="Mode", value=mode_val, inline=True)
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=True)
@@ -2614,7 +2606,7 @@ class FRTHallOfFameModal(discord.ui.Modal):
 class HallOfFameTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament type…",
+            placeholder="Select tournament typeâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -2649,7 +2641,7 @@ class SponsorsModal(discord.ui.Modal):
     )
     sponsors = discord.ui.TextInput(
         label="Sponsors (one per line)",
-        placeholder="Orion Esports | Morocco | 263329265594925057\n25€ | Other Team | France | 123456789",
+        placeholder="Orion Esports | Morocco | 263329265594925057\n25â‚¬ | Other Team | France | 123456789",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=1200,
@@ -2702,7 +2694,7 @@ class SponsorsModal(discord.ui.Modal):
             team, flag, mention, amount = parsed  # type: ignore[misc]
 
             team_emoji = await _ensure_team_emoji(interaction.guild, team)
-            out_lines.append(f"{amount} — {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
+            out_lines.append(f"{amount} â€” {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
 
         if not out_lines:
             await interaction.response.send_message("Sponsors list is required (at least 1 line).", ephemeral=True)
@@ -2736,9 +2728,9 @@ class SponsorsModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
             )
-            # React with :heart_hands: (🫶). Best-effort.
+            # React with :heart_hands: (ðŸ«¶). Best-effort.
             try:
-                await msg.add_reaction("🫶")
+                await msg.add_reaction("ðŸ«¶")
             except discord.DiscordException:
                 pass
         except discord.Forbidden:
@@ -2765,7 +2757,7 @@ class SponsorsModal(discord.ui.Modal):
 class SponsorsTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament type…",
+            placeholder="Select tournament typeâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -2798,9 +2790,9 @@ class LeaderboardModal(discord.ui.Modal):
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
             return
 
-        # Normalize date range (replace -> with →, collapse spaces).
+        # Normalize date range (replace -> with â†’, collapse spaces).
         raw = (self.date_range.value or "").strip()
-        date_range = " ".join(raw.replace("->", "→").split())
+        date_range = " ".join(raw.replace("->", "â†’").split())
 
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
@@ -2813,10 +2805,6 @@ class LeaderboardModal(discord.ui.Modal):
             if required is not None:
                 await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
-            return
 
         if not _LEADERBOARD_CSV.exists():
             await interaction.followup.send(
@@ -2899,7 +2887,7 @@ class PartLeaderboardModal(discord.ui.Modal):
             return
 
         raw = (self.date_range.value or "").strip()
-        date_range = " ".join(raw.replace("->", "→").split())
+        date_range = " ".join(raw.replace("->", "â†’").split())
 
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
@@ -2912,10 +2900,6 @@ class PartLeaderboardModal(discord.ui.Modal):
             if required is not None:
                 await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
@@ -2972,7 +2956,7 @@ class PartLeaderboardModal(discord.ui.Modal):
 class LeaderboardTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament type…",
+            placeholder="Select tournament typeâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -2992,11 +2976,34 @@ class LeaderboardTypeView(discord.ui.View):
 class SetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+        original_items = list(self.children)
+        by_custom_id = {item.custom_id: item for item in original_items}
+        ordered_first_row_ids = [
+            "rematchhq:purge_scrims",
+            "rematchhq:compliment",
+            "rematchhq:tournament_today",
+        ]
+
+        self.clear_items()
+
+        added_ids: set[str] = set()
+        for custom_id in ordered_first_row_ids:
+            item = by_custom_id.get(custom_id)
+            if item is None:
+                continue
+            self.add_item(item)
+            added_ids.add(custom_id)
+
+        for item in original_items:
+            if item.custom_id in added_ids:
+                continue
+            self.add_item(item)
 
     @discord.ui.button(
         label="🏆 Tournament Results",
-        style=discord.ButtonStyle.primary,
+        style=discord.ButtonStyle.danger,
         custom_id="rematchhq:tournament_results",
+        row=1,
     )
     async def tournament_results(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3010,16 +3017,13 @@ class SetupView(discord.ui.View):
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
-
         await interaction.response.send_modal(TournamentResultsModal())
 
     @discord.ui.button(
         label="📅 Tournament Today",
         style=discord.ButtonStyle.primary,
         custom_id="rematchhq:tournament_today",
+        row=0,
     )
     async def tournament_today(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3032,10 +3036,6 @@ class SetupView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         if not config.NOTION_TOKEN or not config.NOTION_DATABASE_ID:
             await interaction.response.send_message(
@@ -3083,8 +3083,8 @@ class SetupView(discord.ui.View):
 
         items: list[tuple[discord.Embed, str, str | None, str | None]] = []
         for t in tournaments_today[:25]:
-            entry = f"{t.entry_fee_eur:g}€" if isinstance(t.entry_fee_eur, (int, float)) else "-"
-            prize = f"{t.prize_pool_eur:g}€" if isinstance(t.prize_pool_eur, (int, float)) else "-"
+            entry = f"{t.entry_fee_eur:g}â‚¬" if isinstance(t.entry_fee_eur, (int, float)) else "-"
+            prize = f"{t.prize_pool_eur:g}â‚¬" if isinstance(t.prize_pool_eur, (int, float)) else "-"
             fmt = (t.format or "").strip() or "-"
 
             website = f"[URL]({t.website_url})" if t.website_url else "-"
@@ -3238,6 +3238,7 @@ class SetupView(discord.ui.View):
         label="📊 Leaderboard",
         style=discord.ButtonStyle.green,
         custom_id="rematchhq:leaderboard",
+        row=2,
     )
     async def leaderboard(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3251,16 +3252,13 @@ class SetupView(discord.ui.View):
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
-
         await interaction.response.send_modal(LeaderboardModal())
 
     @discord.ui.button(
         label="👑 Rosters",
         style=discord.ButtonStyle.green,
         custom_id="rematchhq:rosters_embeds",
+        row=2,
     )
     async def rosters_embeds(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3278,10 +3276,6 @@ class SetupView(discord.ui.View):
             if required is not None:
                 await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.followup.send("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         rosters_channel_id = server.rosters_channel_id if server else None
@@ -3382,7 +3376,7 @@ class SetupView(discord.ui.View):
                     continue
 
                 icon_path = find_team_icon(team_name)
-                desired_role_name = f"#{idx} — {team_name}"
+                desired_role_name = f"#{idx} â€” {team_name}"
 
                 role = None
                 if do_role_work:
@@ -3539,9 +3533,9 @@ class SetupView(discord.ui.View):
 
     @discord.ui.button(
         label="💖 Compliment",
-        style=discord.ButtonStyle.danger,
+        style=discord.ButtonStyle.primary,
         custom_id="rematchhq:compliment",
-        row=1,
+        row=0,
     )
     async def compliment(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3554,10 +3548,6 @@ class SetupView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         compliments_channel_id = server.compliments_channel_id if server else None
@@ -3619,7 +3609,7 @@ class SetupView(discord.ui.View):
 
         def _render_content(member: discord.Member) -> str:
             return (
-                f"Hey **{member.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
+                f"Hey **{member.mention}**, it's your turn for the **compliment of the day**! ðŸŒŸ\n"
                 "Pick a **rival player or a rival team** and say something positive about them."
             )
 
@@ -3706,9 +3696,9 @@ class SetupView(discord.ui.View):
 
     @discord.ui.button(
         label="🗑️ Purge Scrims",
-        style=discord.ButtonStyle.danger,
+        style=discord.ButtonStyle.primary,
         custom_id="rematchhq:purge_scrims",
-        row=1,
+        row=0,
     )
     async def purge_scrims(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3721,10 +3711,6 @@ class SetupView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         forum_id = server.scrim_forum_channel_id if server else None
@@ -3751,7 +3737,7 @@ class SetupView(discord.ui.View):
         label="🔮 Add Prediction",
         style=discord.ButtonStyle.secondary,
         custom_id="rematchhq:prediction",
-        row=1,
+        row=3,
     )
     async def prediction(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3765,17 +3751,13 @@ class SetupView(discord.ui.View):
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
-
         await interaction.response.send_modal(PredictionPollModal())
 
     @discord.ui.button(
         label="📈 Calculate Predictions",
         style=discord.ButtonStyle.secondary,
         custom_id="rematchhq:calculate_predictions",
-        row=1,
+        row=3,
     )
     async def calculate_predictions(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild or not interaction.channel:
@@ -3788,10 +3770,6 @@ class SetupView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         await interaction.response.send_modal(PredictionResultsModal())
 
@@ -3948,15 +3926,11 @@ class ForumPurgeConfirmView(discord.ui.View):
     @discord.ui.button(label="Confirm purge", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can confirm.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can confirm.", ephemeral=True)
             return
 
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
             return
 
         channel = interaction.guild.get_channel(self.forum_channel_id)
@@ -3975,7 +3949,7 @@ class ForumPurgeConfirmView(discord.ui.View):
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Only the admin who opened this can cancel.", ephemeral=True)
+            await interaction.response.send_message("Only the person who opened this can cancel.", ephemeral=True)
             return
         await interaction.response.send_message("Cancelled.", ephemeral=True)
 
@@ -4000,10 +3974,6 @@ class SetupPartView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
@@ -4046,10 +4016,6 @@ class SetupPartView(discord.ui.View):
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
-
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
             await interaction.response.send_message(
@@ -4089,10 +4055,6 @@ class SetupPartView(discord.ui.View):
             if required is not None:
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
 
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
@@ -4134,10 +4096,6 @@ class SetupPartView(discord.ui.View):
                 await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
                 return
 
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
-            return
-
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
             await interaction.response.send_message(
@@ -4168,7 +4126,7 @@ class AcademyRoleSelect(discord.ui.Select):
             discord.SelectOption(label=r, value=r, description=f"Register as {r}") for r in ROLES
         ]
         super().__init__(
-            placeholder="Select your role…",
+            placeholder="Select your roleâ€¦",
             min_values=1,
             max_values=len(ROLES),
             options=options,
@@ -4210,7 +4168,7 @@ class AcademySetupView(discord.ui.View):
     )
     async def register(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.send_message(
-            "What’s your role?",
+            "Whatâ€™s your role?",
             ephemeral=True,
             view=AcademyRoleView(),
         )
@@ -4223,7 +4181,7 @@ class AcademySetupView(discord.ui.View):
     async def unregister(self, interaction: discord.Interaction, _: discord.ui.Button):
         username = getattr(interaction.user, "name", "") or ""
         existed = await unregister_player(username=username)
-        msg = "You’ve been unregistered." if existed else "You weren’t registered."
+        msg = "Youâ€™ve been unregistered." if existed else "You werenâ€™t registered."
         await interaction.response.send_message(msg, ephemeral=True)
 
     @discord.ui.button(
@@ -4234,10 +4192,6 @@ class AcademySetupView(discord.ui.View):
     async def create_teams(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("Admins only.", ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -4286,3 +4240,4 @@ class AcademySetupView(discord.ui.View):
                 await interaction.response.send_message(msg, ephemeral=True)
         except discord.DiscordException:
             pass
+

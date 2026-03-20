@@ -29,8 +29,7 @@ DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "output"
 # Add as many aliases as you want here.
 TEAM_NAME_MAP: dict[str, str] = {
     "VΞX": "VEX",
-    "Sugar Pills": "OVERDOZEE",
-    "ΞØN Esports": "EON Esports",
+    "Sugar Pills": "OVERDOZEE",    
     "KIN EU": "KIN",
     "Phantom's": "BENEATH REALITY",
     "Sugar Pills": "OVERDOZEE",
@@ -42,16 +41,12 @@ TEAM_NAME_MAP: dict[str, str] = {
     "K7auzPool": "KlauzPool7",
     "no name": "noName",
     "noMercy": "noName",
-    "100X35": "The Chicks",
     "BENATH REALITY": "BENEATH REALITY",
     "PHANTOM S": "BENEATH REALITY",
     "Reborn Xi - real": "Reborn Xi",
-    "NoLimits eSport": "NoLimits eSports",
-    "Entropy": "NoLimits eSports",
     "FLY KITSUNE": "Guardian Owls",
     "Minus Tempø": "La Pasión",
     "IGP™ Ultima Team": "EOZ Ultima",
-    "The Chicks": "Karasuno",
     "ANGELS": "chicken sellers",
     "vaffanculo ghastly": "chicken sellers",
     "UDG": "Underdog Gaming",
@@ -65,13 +60,38 @@ TEAM_NAME_MAP: dict[str, str] = {
     "SCATTER.": "Team MOIRAI",
     "Playing-Ducks": "Team MOIRAI",
     "PlayingDucksᴿᴹ": "Team MOIRAI",
-    "Trapani FC": "Karasuno",
-    "Karasuno 烏": "Karasuno",
     "Samba Cookers (FEEL THE AURA)": "Samba Cookers",
     "Samba Cooker": "Samba Cookers",
-    "√ ᴠᴏʀᴛᴇx": "Vortex"
+    "√ ᴠᴏʀᴛᴇx": "Vortex",
+    "100X35": "Pride Warriors",
+    "The Chicks": "Pride Warriors",
+    "Trapani FC": "Pride Warriors",
+    "Karasuno 烏": "Pride Warriors",
+    "Karasuno": "Pride Warriors",
+    "ΞØN Esports": "1Motive",
+    "EON Esports": "1Motive",
+    "ΩRIGIN": "ORIGIN",
+    "Entropy": "Delusion Esports",
+    "NoLimits eSport": "Delusion Esports",
+    "NoLimits eSports": "Delusion Esports",
+    "ᴘʀʌɢᴍʌ ᴄʟʌɴ": "PRAGMA CLAN",
+    "Ωrigin Académie": "Origin Iris",
+    "Ωrigin Iris": "Origin Iris",
 }
 
+DISBANDED_TEAMS: list[str] = [
+    "Monarchy EC",
+    "KIN",
+    "chicken sellers",
+    "Str1ve Corp",
+    "Team ANDREA",
+    "TEAM ENVOY",
+    "Devil Esport",
+    "Karma",
+    "Samba Cookers",
+    "JUSTICE",
+    "ORION ESPORTS"
+]
 
 def normalize_name(name: str) -> str:
     # Trim + collapse whitespace + casefold for robust matching.
@@ -108,6 +128,10 @@ def build_normalized_map(raw_map: dict[str, str]) -> dict[str, str]:
     return out
 
 
+def build_normalized_set(names: list[str]) -> set[str]:
+    return {normalize_name(name) for name in names if name and name.strip()}
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Aggregate/merge teams in leaderboard.csv via a mapping.")
     ap.add_argument(
@@ -141,6 +165,7 @@ def main(argv: list[str]) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     name_map = build_normalized_map(TEAM_NAME_MAP)
+    disbanded_teams = build_normalized_set(DISBANDED_TEAMS)
 
     aggs: dict[str, TeamAgg] = {}
     with input_path.open("r", newline="", encoding="utf-8-sig") as f:
@@ -161,6 +186,8 @@ def main(argv: list[str]) -> int:
             team_norm = normalize_name(team_raw)
             canonical = name_map.get(team_norm, " ".join(team_raw.split()))
             canonical_norm = normalize_name(canonical)
+            if canonical_norm in disbanded_teams:
+                continue
 
             agg = aggs.get(canonical_norm)
             if agg is None:

@@ -58,7 +58,7 @@ if config.GUILD_ID:
 @commands.guild_only()
 async def sync_prefix(ctx: commands.Context):
     """
-    Admin-only: manually sync slash commands.
+    Manually sync slash commands.
 
     Useful when SYNC_COMMANDS_ON_STARTUP=0 but you added/changed commands.
     """
@@ -71,10 +71,6 @@ async def sync_prefix(ctx: commands.Context):
         if required is not None:
             await ctx.reply(f"Use this in <#{required}>.", mention_author=False)
             return
-
-    if not getattr(ctx.author, "guild_permissions", None) or not ctx.author.guild_permissions.administrator:
-        await ctx.reply("Admins only.", mention_author=False)
-        return
 
     try:
         if config.GUILD_ID:
@@ -101,19 +97,15 @@ async def setup(interaction: discord.Interaction):
             await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
             return
 
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("Admins only.", ephemeral=True)
-        return
-
     embed = discord.Embed(
         title="Rematch HQ Setup",
         description=(
-            "🏆 **Tournament Results:** Post the results of a tournament.\n"
+            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum.\n"
+            "💖 **Compliment:** Tag someone to post a compliment.\n"
             "📅 **Tournament Today:** Post today's tournaments.\n"
+            "🏆 **Tournament Results:** Post the results of a tournament.\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
-            "💖 **Compliment:** Tag someone to post a compliment.\n"
-            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum.\n"
             "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
             "📈 **Calculate Predictions:** Show the top predictors for a given month."
         ),
@@ -134,10 +126,6 @@ async def setup_part(interaction: discord.Interaction):
         if required is not None:
             await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
             return
-
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("Admins only.", ephemeral=True)
-        return
 
     embed = discord.Embed(
         title="PART Setup",
@@ -163,11 +151,6 @@ async def setup_academy(interaction: discord.Interaction):
         if required is not None:
             await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
             return
-
-    # Keep panel posting admin-only to avoid spam; buttons are available to everyone.
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("Admins only.", ephemeral=True)
-        return
 
     embed = discord.Embed(
         title="Academy Registration",
