@@ -90,7 +90,8 @@ DISBANDED_TEAMS: list[str] = [
     "Karma",
     "Samba Cookers",
     "JUSTICE",
-    "ORION ESPORTS"
+    "ORION ESPORTS",
+    "Senger X"
 ]
 
 def normalize_name(name: str) -> str:
