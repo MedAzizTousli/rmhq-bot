@@ -11,7 +11,6 @@ import httpx
 import yaml
 
 from . import config
-from .academy import ROLES, TEAMS_YAML_PATH, create_teams_from_file, register_player, unregister_player
 from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team, _find_custom_emoji
 from .team_icons import find_team_icon
 from .tournament_icons import find_icon
@@ -87,7 +86,7 @@ def _truncate_text(text: str, limit: int) -> str:
     normalized = " ".join((text or "").split())
     if len(normalized) <= limit:
         return normalized
-    return normalized[: max(0, limit - 1)].rstrip() + "â€¦"
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
 
 
 def _poll_media_text(media: object) -> str:
@@ -249,7 +248,7 @@ def _build_prediction_results_embed(
 ) -> discord.Embed:
     label = _prediction_month_label(year, month)
     embed = discord.Embed(
-        title=f"ðŸ”® Predictor of the Month â€” {label}",
+        title=f"🔮 Predictor of the Month — {label}",
         color=0xBE629B,
     )
 
@@ -495,7 +494,7 @@ class PredictionAnswerSelect(discord.ui.Select):
             for index, answer in enumerate(answers, start=1)
         ]
         super().__init__(
-            placeholder="Choose the correct poll answerâ€¦",
+            placeholder="Choose the correct poll answer…",
             min_values=1,
             max_values=1,
             options=options,
@@ -920,7 +919,7 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
 async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
     """
     Return the team's custom emoji string if available.
-    If missing, best-effort upload it from /icons/teams (requires Manage Emojis permission).
+    If missing, best-effort upload it from the public team icon URL.
     """
     team = " ".join((team_name or "").strip().split())
     if not team:
@@ -930,8 +929,8 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
     if existing:
         return existing
 
-    icon_path = find_team_icon(team)
-    if not icon_path:
+    icon_url = find_team_icon(team)
+    if not icon_url:
         return ""
 
     emoji_name = emoji_name_for_team(team)[:32]
@@ -939,7 +938,10 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
         return ""
 
     try:
-        img = icon_path.read_bytes()
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+            resp = await client.get(icon_url)
+            resp.raise_for_status()
+            img = resp.content
         # Discord custom emoji upload limit is small (~256KB). If too large, skip creation.
         if not (0 < len(img) <= 256 * 1024):
             return ""
@@ -949,16 +951,16 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
             reason="Auto-added for sponsor/Hall of Fame post",
         )
         return str(created)
-    except (OSError, discord.Forbidden, discord.HTTPException):
+    except (httpx.HTTPError, discord.Forbidden, discord.HTTPException):
         return ""
 
 
 def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, str]:
     """
     Parse either:
-      1) "Team name | Country | DiscordId"  (default amount 10â‚¬)
-      2) "Amount | Team name | Country | DiscordId"  (custom amount, e.g. 25â‚¬)
-      3) (legacy) "<amount> â€” <team name> <country> <discord id/mention>"
+      1) "Team name | Country | DiscordId"  (default amount 10€)
+      2) "Amount | Team name | Country | DiscordId"  (custom amount, e.g. 25€)
+      3) (legacy) "<amount> — <team name> <country> <discord id/mention>"
 
     Returns (team, flag, mention, amount_display) or (None, error).
     """
@@ -966,7 +968,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
     if not s:
         return None, "Empty line."
 
-    default_amount = "10â‚¬"
+    default_amount = "10€"
 
     # Preferred format: [Amount |] Team | Country | ID
     if "|" in s:
@@ -978,7 +980,7 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
             amount_display = default_amount
             team, country_raw, uid_raw = parts[0], parts[1], parts[2]
         else:
-            return None, f"Expected 3 or 4 parts (e.g. 'Team | Country | ID' or '25â‚¬ | Team | Country | ID') in: `{s}`"
+            return None, f"Expected 3 or 4 parts (e.g. 'Team | Country | ID' or '25€ | Team | Country | ID') in: `{s}`"
         if not team or not country_raw or not uid_raw:
             return None, f"Missing team/country/id in: `{s}`"
 
@@ -994,12 +996,12 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
         return team, flag, mention, amount_display
 
     # Prefer em dash separator.
-    if "â€”" in s:
-        amount_raw, rest = (part.strip() for part in s.split("â€”", 1))
+    if "—" in s:
+        amount_raw, rest = (part.strip() for part in s.split("—", 1))
     elif "-" in s:
         amount_raw, rest = (part.strip() for part in s.split("-", 1))
     else:
-        return None, f"Missing separator 'â€”' in: `{s}`"
+        return None, f"Missing separator '—' in: `{s}`"
 
     if not amount_raw or not rest:
         return None, f"Invalid sponsor line: `{s}`"
@@ -1075,16 +1077,16 @@ def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None
     for idx, r in enumerate(sorted_rows):
         team = " ".join((r.get("Team") or "").split())
         if len(team) > max_team:
-            team = team[: max_team - 1] + "â€¦"
+            team = team[: max_team - 1] + "…"
 
         # Replace 1/2/3 with medal emojis in the Placement column (but keep tie ranges like "1-2").
         pl = placement_labels[idx]
         if pl == "1":
-            pl = "ðŸ¥‡"
+            pl = "🥇"
         elif pl == "2":
-            pl = "ðŸ¥ˆ"
+            pl = "🥈"
         elif pl == "3":
-            pl = "ðŸ¥‰"
+            pl = "🥉"
         placement_vals.append(pl)
         pts_str = str(to_points_int(r.get("Points", "")))
 
@@ -1345,8 +1347,8 @@ def _split_entry_prize_and_time(raw: str) -> tuple[str, str, str] | None:
 
     Accepted separators: "|" or "/"
     Examples:
-      "â‚¬10 | â‚¬200 | 2026-02-11 19:00"
-      "â‚¬10 / â‚¬200 / <t:1739300400>"
+      "€10 | €200 | 2026-02-11 19:00"
+      "€10 / €200 / <t:1739300400>"
     """
     s = raw.strip()
     if not s:
@@ -1702,12 +1704,12 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
       <discord id or mention> <country>
 
     Country accepted as:
-      - ðŸ‡«ðŸ‡· (flag emoji)
+      - 🇫🇷 (flag emoji)
       - :flag_fr:
       - FR (ISO-2)
       - France (common names only)
 
-    Output lines: "ðŸ‡«ðŸ‡· <@123...>"
+    Output lines: "🇫🇷 <@123...>"
     Returns (lines, error_message)
     """
     lines_in = (raw or "").splitlines()
@@ -1732,7 +1734,7 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
         if not flag:
             return [], (
                 f"Couldn't read a country/flag from: `{rest}`.\n"
-                "Use `FR`, `:flag_fr:`, or `ðŸ‡«ðŸ‡·` (or a common country name like `France`)."
+                "Use `FR`, `:flag_fr:`, or `🇫🇷` (or a common country name like `France`)."
             )
 
         out.append(f"{flag} <@{uid}>")
@@ -1750,12 +1752,12 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
       <discord id or mention> <country>
 
     Country accepted as:
-      - ðŸ‡«ðŸ‡· (flag emoji)
+      - 🇫🇷 (flag emoji)
       - :flag_fr:
       - FR (ISO-2)
       - common country names (limited list)
 
-    Output lines: "ðŸ‡«ðŸ‡· <@123...>"
+    Output lines: "🇫🇷 <@123...>"
     Returns (lines, error_message)
     """
     lines_in = (raw or "").splitlines()
@@ -1779,7 +1781,7 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
         if not flag:
             return [], (
                 f"Couldn't read a country/flag from: `{rest}`.\n"
-                "Use `FR`, `:flag_fr:`, or `ðŸ‡«ðŸ‡·` (or a common country name like `France`)."
+                "Use `FR`, `:flag_fr:`, or `🇫🇷` (or a common country name like `France`)."
             )
 
         out.append(f"{flag} <@{uid}>")
@@ -1805,7 +1807,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     entry_and_prize = discord.ui.TextInput(
         label="Entry | Prize | Date & time",
-        placeholder="e.g. â‚¬10 | â‚¬200 | 2026-02-11 19:00",
+        placeholder="e.g. €10 | €200 | 2026-02-11 19:00",
         required=True,
         max_length=120,
     )
@@ -1818,7 +1820,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     winning_roster = discord.ui.TextInput(
         label="Winning roster",
-        placeholder="One per line: <@id> FR  (or :flag_fr: / ðŸ‡«ðŸ‡·)",
+        placeholder="One per line: <@id> FR  (or :flag_fr: / 🇫🇷)",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=400,
@@ -1837,7 +1839,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         entry_prize_time = _split_entry_prize_and_time(self.entry_and_prize.value or "")
         if not entry_prize_time:
             await interaction.response.send_message(
-                "Entry/Prize/Date format: `â‚¬10 | â‚¬200 | 2026-02-11 19:00`",
+                "Entry/Prize/Date format: `€10 | €200 | 2026-02-11 19:00`",
                 ephemeral=True,
             )
             return
@@ -1854,7 +1856,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
                 "Winning roster format (one per line):\n"
                 "`<@123456789012345678> FR`\n"
                 "`123456789012345678 :flag_fr:`\n"
-                "`<@123456789012345678> ðŸ‡«ðŸ‡·`\n\n"
+                "`<@123456789012345678> 🇫🇷`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
@@ -1874,12 +1876,9 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         embed.add_field(name="Standings", value="\n".join(lines) or "-", inline=False)
         embed.add_field(name="Winning roster", value="\n".join(roster_lines), inline=False)
 
-        icon_path = find_icon(t_org)
-        icon_file = None
-        if icon_path:
-            filename = icon_path.name
-            icon_file = discord.File(icon_path, filename=filename)
-            embed.set_thumbnail(url=f"attachment://{filename}")
+        icon_url = find_icon(t_org)
+        if icon_url:
+            embed.set_thumbnail(url=icon_url)
 
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -1914,8 +1913,6 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             embed=embed,
             allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
         )
-        if icon_path:
-            preview_kwargs["file"] = discord.File(icon_path, filename=icon_path.name)
         preview_msg = await test_channel.send(**preview_kwargs)
 
         async def _publish(confirm_interaction: discord.Interaction) -> str:
@@ -1937,8 +1934,6 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
             )
-            if icon_path:
-                kwargs["file"] = discord.File(icon_path, filename=icon_path.name)
             msg = await dest.send(**kwargs)
 
             # React with winner + organizer emojis (best-effort).
@@ -1981,7 +1976,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 class TournamentInfoModal(discord.ui.Modal):
     tournament_name = discord.ui.TextInput(
         label="Tournament name",
-        placeholder="e.g. PRT #9 â€” Rematch Weekly Cup",
+        placeholder="e.g. PRT #9 — Rematch Weekly Cup",
         required=True,
         max_length=100,
     )
@@ -1999,7 +1994,7 @@ class TournamentInfoModal(discord.ui.Modal):
     )
     prize_pool_input = discord.ui.TextInput(
         label="Prize pool",
-        placeholder="e.g. 50â‚¬ (leave blank to use default)",
+        placeholder="e.g. 50€ (leave blank to use default)",
         required=False,
         max_length=40,
     )
@@ -2045,7 +2040,7 @@ class TournamentInfoModal(discord.ui.Modal):
         if prize_pool_raw:
             prize_pool_display = prize_pool_raw
         else:
-            prize_pool_display = f"{default_prize_pool:g}â‚¬"
+            prize_pool_display = f"{default_prize_pool:g}€"
 
         embed = discord.Embed(title=t_name or "Tournament", color=int(color))
         # Row 1 (inline): Battlefy | Rules | Fees & Rewards
@@ -2053,7 +2048,7 @@ class TournamentInfoModal(discord.ui.Modal):
         embed.add_field(name="Rules", value=f"[URL]({_RULEBOOK_URL})", inline=True)
         embed.add_field(
             name="Fees & Rewards",
-            value=f"__Entry Fee__: 0â‚¬\n__Prize Pool__: {prize_pool_display}",
+            value=f"__Entry Fee__: 0€\n__Prize Pool__: {prize_pool_display}",
             inline=True,
         )
         # Rows below (stacked)
@@ -2086,12 +2081,9 @@ class TournamentInfoModal(discord.ui.Modal):
             inline=False,
         )
 
-        icon_path = find_icon(ttype)
-        icon_file = None
-        if icon_path:
-            filename = icon_path.name
-            icon_file = discord.File(icon_path, filename=filename)
-            embed.set_thumbnail(url=f"attachment://{filename}")
+        icon_url = find_icon(ttype)
+        if icon_url:
+            embed.set_thumbnail(url=icon_url)
 
         channel = interaction.guild.get_channel(info_channel_id)
         if channel is None:
@@ -2112,8 +2104,6 @@ class TournamentInfoModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
             )
-            if icon_file:
-                kwargs["file"] = icon_file
             await channel.send(**kwargs)
         except discord.Forbidden:
             await interaction.followup.send(
@@ -2221,8 +2211,8 @@ class FRTTournamentInfoModal(discord.ui.Modal):
 
         embed = discord.Embed(title=f"FRT #{edition}", color=int(color))
         embed.add_field(name="Battlefy", value=f"[URL]({t_url})" if t_url else "-", inline=True)
-        embed.add_field(name="Entry Fee", value="0â‚¬", inline=True)
-        embed.add_field(name="Prize Pool", value="0â‚¬", inline=True)
+        embed.add_field(name="Entry Fee", value="0€", inline=True)
+        embed.add_field(name="Prize Pool", value="0€", inline=True)
         embed.add_field(
             name="Date & time",
             value=f"{when}\nRegistration closes 1 minute before tournament start.",
@@ -2230,17 +2220,14 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         )
         embed.add_field(
             name="Mode",
-            value=f"{mode_val} â€” [Rules]({_FRT_RULES_URL})",
+            value=f"{mode_val} — [Rules]({_FRT_RULES_URL})",
             inline=False,
         )
         embed.add_field(name="Format", value=format_val, inline=False)
 
-        icon_path = find_icon(ttype)
-        icon_file = None
-        if icon_path:
-            filename = icon_path.name
-            icon_file = discord.File(icon_path, filename=filename)
-            embed.set_thumbnail(url=f"attachment://{filename}")
+        icon_url = find_icon(ttype)
+        if icon_url:
+            embed.set_thumbnail(url=icon_url)
 
         channel = interaction.guild.get_channel(info_channel_id)
         if channel is None:
@@ -2261,8 +2248,6 @@ class FRTTournamentInfoModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
             )
-            if icon_file:
-                kwargs["file"] = icon_file
             await channel.send(**kwargs)
         except discord.Forbidden:
             await interaction.followup.send(
@@ -2291,7 +2276,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
 class TournamentInfoTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament typeâ€¦",
+            placeholder="Select tournament type…",
             min_values=1,
             max_values=1,
             options=options,
@@ -2381,7 +2366,7 @@ class HallOfFameModal(discord.ui.Modal):
                 "Roster format (one per line):\n"
                 "`FR 123456789012345678`\n"
                 "`:flag_fr: <@123456789012345678>`\n"
-                "`ðŸ‡«ðŸ‡· 123456789012345678`\n\n"
+                "`🇫🇷 123456789012345678`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
@@ -2389,22 +2374,19 @@ class HallOfFameModal(discord.ui.Modal):
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
 
-        # Attach TEAM icon as the main embed image (not thumbnail).
-        team_icon_path = find_team_icon(team)
-        team_icon_file = None
+        # Use the public TEAM icon URL as the main embed image (not thumbnail).
+        team_icon_url = find_team_icon(team)
 
         # Try to use (or best-effort create) the custom emoji.
         team_emoji = await _ensure_team_emoji(interaction.guild, team)
 
-        title = f"{ttype} #{edition} Champions â€” {team}{(' ' + team_emoji) if team_emoji else ''}"
+        title = f"{ttype} #{edition} Champions — {team}{(' ' + team_emoji) if team_emoji else ''}"
         embed = discord.Embed(title=title, color=int(color))
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=False)
         embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
 
-        if team_icon_path:
-            filename = team_icon_path.name
-            team_icon_file = discord.File(team_icon_path, filename=filename)
-            embed.set_image(url=f"attachment://{filename}")
+        if team_icon_url:
+            embed.set_image(url=team_icon_url)
 
         channel = interaction.guild.get_channel(hof_channel_id)
         if channel is None:
@@ -2425,8 +2407,6 @@ class HallOfFameModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
             )
-            if team_icon_file:
-                kwargs["file"] = team_icon_file
             msg = await channel.send(**kwargs)
 
             # React with the team emoji (best-effort).
@@ -2533,27 +2513,24 @@ class FRTHallOfFameModal(discord.ui.Modal):
                 "Roster format (one per line):\n"
                 "`FR 123456789012345678`\n"
                 "`:flag_fr: <@123456789012345678>`\n"
-                "`ðŸ‡«ðŸ‡· 123456789012345678`\n\n"
+                "`🇫🇷 123456789012345678`\n\n"
                 f"{roster_err}",
                 ephemeral=True,
             )
             return
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
-        team_icon_path = find_team_icon(team)
-        team_icon_file = None
+        team_icon_url = find_team_icon(team)
         team_emoji = await _ensure_team_emoji(interaction.guild, team)
 
-        title = f"{ttype} #{edition} Champions â€” {team}{(' ' + team_emoji) if team_emoji else ''}"
+        title = f"{ttype} #{edition} Champions — {team}{(' ' + team_emoji) if team_emoji else ''}"
         embed = discord.Embed(title=title, color=int(color))
         embed.add_field(name="Mode", value=mode_val, inline=True)
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=True)
         embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
 
-        if team_icon_path:
-            filename = team_icon_path.name
-            team_icon_file = discord.File(team_icon_path, filename=filename)
-            embed.set_image(url=f"attachment://{filename}")
+        if team_icon_url:
+            embed.set_image(url=team_icon_url)
 
         channel = interaction.guild.get_channel(hof_channel_id)
         if channel is None:
@@ -2574,8 +2551,6 @@ class FRTHallOfFameModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
             )
-            if team_icon_file:
-                kwargs["file"] = team_icon_file
             msg = await channel.send(**kwargs)
             if team_emoji:
                 try:
@@ -2606,7 +2581,7 @@ class FRTHallOfFameModal(discord.ui.Modal):
 class HallOfFameTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament typeâ€¦",
+            placeholder="Select tournament type…",
             min_values=1,
             max_values=1,
             options=options,
@@ -2641,7 +2616,7 @@ class SponsorsModal(discord.ui.Modal):
     )
     sponsors = discord.ui.TextInput(
         label="Sponsors (one per line)",
-        placeholder="Orion Esports | Morocco | 263329265594925057\n25â‚¬ | Other Team | France | 123456789",
+        placeholder="Orion Esports | Morocco | 263329265594925057\n25€ | Other Team | France | 123456789",
         style=discord.TextStyle.paragraph,
         required=True,
         max_length=1200,
@@ -2694,7 +2669,7 @@ class SponsorsModal(discord.ui.Modal):
             team, flag, mention, amount = parsed  # type: ignore[misc]
 
             team_emoji = await _ensure_team_emoji(interaction.guild, team)
-            out_lines.append(f"{amount} â€” {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
+            out_lines.append(f"{amount} — {team_emoji + ' ' if team_emoji else ''}{flag} {mention}")
 
         if not out_lines:
             await interaction.response.send_message("Sponsors list is required (at least 1 line).", ephemeral=True)
@@ -2728,9 +2703,9 @@ class SponsorsModal(discord.ui.Modal):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
             )
-            # React with :heart_hands: (ðŸ«¶). Best-effort.
+            # React with :heart_hands: (🫶). Best-effort.
             try:
-                await msg.add_reaction("ðŸ«¶")
+                await msg.add_reaction("🫶")
             except discord.DiscordException:
                 pass
         except discord.Forbidden:
@@ -2757,7 +2732,7 @@ class SponsorsModal(discord.ui.Modal):
 class SponsorsTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament typeâ€¦",
+            placeholder="Select tournament type…",
             min_values=1,
             max_values=1,
             options=options,
@@ -2956,7 +2931,7 @@ class PartLeaderboardModal(discord.ui.Modal):
 class LeaderboardTypeSelect(discord.ui.Select):
     def __init__(self, *, options: list[discord.SelectOption]):
         super().__init__(
-            placeholder="Select tournament typeâ€¦",
+            placeholder="Select tournament type…",
             min_values=1,
             max_values=1,
             options=options,
@@ -3081,10 +3056,10 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("No tournaments found for today.", ephemeral=True)
             return
 
-        items: list[tuple[discord.Embed, str, str | None, str | None]] = []
+        items: list[tuple[discord.Embed, str]] = []
         for t in tournaments_today[:25]:
-            entry = f"{t.entry_fee_eur:g}â‚¬" if isinstance(t.entry_fee_eur, (int, float)) else "-"
-            prize = f"{t.prize_pool_eur:g}â‚¬" if isinstance(t.prize_pool_eur, (int, float)) else "-"
+            entry = f"{t.entry_fee_eur:g}€" if isinstance(t.entry_fee_eur, (int, float)) else "-"
+            prize = f"{t.prize_pool_eur:g}€" if isinstance(t.prize_pool_eur, (int, float)) else "-"
             fmt = (t.format or "").strip() or "-"
 
             website = f"[URL]({t.website_url})" if t.website_url else "-"
@@ -3104,11 +3079,10 @@ class SetupView(discord.ui.View):
             e.add_field(name="Website", value=website, inline=True)
             e.add_field(name="Discord", value=dsc, inline=True)
 
-            icon_path = find_icon(org)
-            icon_filename = icon_path.name if icon_path else None
-            if icon_filename:
-                e.set_thumbnail(url=f"attachment://{icon_filename}")
-            items.append((e, org, str(icon_path) if icon_path else None, icon_filename))
+            icon_url = find_icon(org)
+            if icon_url:
+                e.set_thumbnail(url=icon_url)
+            items.append((e, org))
 
         server = config.server_for_guild_id(interaction.guild.id)
         upcoming_channel_id = server.upcoming_tournaments_channel_id if server else None
@@ -3155,15 +3129,7 @@ class SetupView(discord.ui.View):
             ids: list[int] = []
             for i in range(0, len(items), 10):
                 chunk = items[i : i + 10]
-                embeds = [e for (e, _, __, ___) in chunk]
-
-                files: list[discord.File] = []
-                seen: set[str] = set()
-                for _, __org, path, filename in chunk:
-                    if not path or not filename or filename in seen:
-                        continue
-                    seen.add(filename)
-                    files.append(discord.File(path, filename=filename))
+                embeds = [e for (e, _) in chunk]
 
                 if preview:
                     content = None
@@ -3172,20 +3138,18 @@ class SetupView(discord.ui.View):
                     msg = await dest.send(
                         content=content,
                         embeds=embeds,
-                        files=files,
                         allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
                     )
                 else:
                     msg = await dest.send(
                         content=ping if (ping and i == 0) else None,
                         embeds=embeds,
-                        files=files,
                         allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
                     )
 
                     # React with tournament (org) emoji(s). Best-effort.
                     org_emojis = []
-                    for __e, org, __p, __f in chunk:
+                    for __e, org in chunk:
                         em = emoji_for_org(org, interaction.guild)
                         if em and em not in org_emojis:
                             org_emojis.append(em)
@@ -3320,7 +3284,6 @@ class SetupView(discord.ui.View):
 
         async def _build_payload(*, do_role_work: bool):
             embeds: list[discord.Embed] = []
-            files: list[discord.File] = []
             reactions: list[str] = []
             added = 0
 
@@ -3375,8 +3338,8 @@ class SetupView(discord.ui.View):
                 if not isinstance(players, list):
                     continue
 
-                icon_path = find_team_icon(team_name)
-                desired_role_name = f"#{idx} â€” {team_name}"
+                icon_url = find_team_icon(team_name)
+                desired_role_name = f"#{idx} — {team_name}"
 
                 role = None
                 if do_role_work:
@@ -3461,13 +3424,8 @@ class SetupView(discord.ui.View):
                     description="\n".join(description_parts),
                 )
 
-                if icon_path:
-                    try:
-                        attach_name = f"{idx}_{icon_path.name}"
-                        files.append(discord.File(icon_path, filename=attach_name))
-                        e.set_image(url=f"attachment://{attach_name}")
-                    except (OSError, discord.DiscordException):
-                        pass
+                if icon_url:
+                    e.set_image(url=icon_url)
 
                 embeds.append(e)
                 added += 1
@@ -3478,9 +3436,9 @@ class SetupView(discord.ui.View):
                 f"Failures (permissions/API): **{role_failures}**."
             )
 
-            return embeds, files, reactions, added, summary
+            return embeds, reactions, added, summary
 
-        embeds_preview, files_preview, __reactions, added_preview, __summary = await _build_payload(do_role_work=False)
+        embeds_preview, __reactions, added_preview, __summary = await _build_payload(do_role_work=False)
         if added_preview == 0:
             await interaction.followup.send("No valid rosters found in `leaderboard/output/rosters.yaml`.", ephemeral=True)
             return
@@ -3489,7 +3447,6 @@ class SetupView(discord.ui.View):
             preview_msg = await test_channel.send(
                 content=f"[PREVIEW] Rosters\n{ping or ''}".strip(),
                 embeds=embeds_preview,
-                files=files_preview,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
             )
         except discord.Forbidden:
@@ -3504,13 +3461,12 @@ class SetupView(discord.ui.View):
             if dest is None:
                 return "Couldn't find the rosters channel."
 
-            embeds, files, reactions, added, summary = await _build_payload(do_role_work=True)
+            embeds, reactions, added, summary = await _build_payload(do_role_work=True)
             if added == 0:
                 return "No valid rosters found."
             msg = await dest.send(
                 content=ping,
                 embeds=embeds,
-                files=files,
                 allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
             )
             for em in reactions[:20]:
@@ -3609,7 +3565,7 @@ class SetupView(discord.ui.View):
 
         def _render_content(member: discord.Member) -> str:
             return (
-                f"Hey **{member.mention}**, it's your turn for the **compliment of the day**! ðŸŒŸ\n"
+                f"Hey **{member.mention}**, it's your turn for the **compliment of the day**! 🌟\n"
                 "Pick a **rival player or a rival team** and say something positive about them."
             )
 
@@ -4120,124 +4076,4 @@ class SetupPartView(discord.ui.View):
         )
 
 
-class AcademyRoleSelect(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label=r, value=r, description=f"Register as {r}") for r in ROLES
-        ]
-        super().__init__(
-            placeholder="Select your roleâ€¦",
-            min_values=1,
-            max_values=len(ROLES),
-            options=options,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        roles = [v.strip() for v in (self.values or []) if v.strip()]
-        username = getattr(interaction.user, "name", "") or ""
-        try:
-            registered = await register_player(username=username, roles=roles, default_tier=3)
-        except ValueError:
-            await interaction.response.edit_message(
-                content="Invalid role selection. Please try again.",
-                view=None,
-            )
-            return
-
-        parts = [f"**{r}** (tier **{t}**)" for r, t in registered.items()]
-        await interaction.response.edit_message(
-            content=f"Registered **{username}** as " + ", ".join(parts) + ".",
-            view=None,
-        )
-
-
-class AcademyRoleView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=120)
-        self.add_item(AcademyRoleSelect())
-
-
-class AcademySetupView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(
-        label="Register",
-        style=discord.ButtonStyle.primary,
-        custom_id="rematchhq:academy_register",
-    )
-    async def register(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await interaction.response.send_message(
-            "Whatâ€™s your role?",
-            ephemeral=True,
-            view=AcademyRoleView(),
-        )
-
-    @discord.ui.button(
-        label="Unregister",
-        style=discord.ButtonStyle.danger,
-        custom_id="rematchhq:academy_unregister",
-    )
-    async def unregister(self, interaction: discord.Interaction, _: discord.ui.Button):
-        username = getattr(interaction.user, "name", "") or ""
-        existed = await unregister_player(username=username)
-        msg = "Youâ€™ve been unregistered." if existed else "You werenâ€™t registered."
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    @discord.ui.button(
-        label="Create teams",
-        style=discord.ButtonStyle.secondary,
-        custom_id="rematchhq:academy_create_teams",
-    )
-    async def create_teams(self, interaction: discord.Interaction, _: discord.ui.Button):
-        if not interaction.guild:
-            await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        teams = await create_teams_from_file()
-
-        if not teams:
-            await interaction.followup.send(
-                "Couldn't create any complete teams (need 1 player for each role, and 5 distinct players).",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.followup.send(
-            f"Generated **{len(teams)}** academy team(s) into `{TEAMS_YAML_PATH.name}`.",
-            ephemeral=True,
-        )
-
-        # Preview ALL teams (chunked to stay under Discord's 2000-char limit).
-        blocks: list[str] = []
-        cur = ""
-        for i, team in enumerate(teams, start=1):
-            section_lines = [f"academy team {i}:"]
-            for role in ROLES:
-                u, t = team.get(role, ("-", 0))
-                section_lines.append(f"  {role}: {u} ({t})")
-            section = "\n".join(section_lines) + "\n"
-
-            # Keep some headroom for code fences.
-            if len(cur) + len(section) > 1800 and cur.strip():
-                blocks.append(cur.rstrip())
-                cur = ""
-            cur += section
-        if cur.strip():
-            blocks.append(cur.rstrip())
-
-        for b in blocks:
-            await interaction.followup.send("```" + b + "```", ephemeral=True)
-
-    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
-        print("AcademySetupView error:", repr(error))
-        msg = "Something went wrong handling that action."
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(msg, ephemeral=True)
-            else:
-                await interaction.response.send_message(msg, ephemeral=True)
-        except discord.DiscordException:
-            pass
 
