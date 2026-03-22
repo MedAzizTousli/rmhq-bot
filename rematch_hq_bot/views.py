@@ -2071,7 +2071,7 @@ class TournamentInfoModal(discord.ui.Modal):
             name="Match Settings",
             value=(
                 "```"
-                "Match duration: 6 min (WB) | 8 min (LB)\n"
+                "Match duration: 6 min (WB) | 10 min (LB)\n"
                 "Overtime max duration: Infinite\n"
                 "Score to reach: 0\n"
                 "Mercy rule goal difference: 4\n"
