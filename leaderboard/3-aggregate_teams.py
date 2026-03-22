@@ -77,6 +77,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴘʀʌɢᴍʌ ᴄʟʌɴ": "PRAGMA CLAN",
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
+    "Desert elders": "SOLID",
 }
 
 DISBANDED_TEAMS: list[str] = [
