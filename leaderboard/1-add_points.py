@@ -86,47 +86,22 @@ def default_output_path(input_path: Path) -> Path:
     return input_path.with_name(f"{input_path.stem}_points{input_path.suffix}")
 
 
-_TOURNAMENT_PRIZE_POOLS: dict[str, float] = {
-    "art": 0.0,
-    "prt": 50.0,
-    "mrc": 166.0,
-    "mrc_swiss": 70.0,
-    "rr": 0.0,
-    "nc": 0.0,
-    "rpd": 0.0,
-    "ctr": 0.0,
-    "vlr": 215,
-    "ice": 0.0,
-    "s2p1": 500.0,
-}
-
-
-def infer_tournament_key_from_filename(path: Path) -> Optional[str]:
+def infer_prize_pool(path: Path) -> Optional[float]:
     """
-    Infer a tournament key from a CSV filename.
+    Infer a prize pool from the trailing "-<amount>" in a CSV filename.
 
     Examples:
-      - art9.csv -> "art"
-      - prt6.csv -> "prt"
-      - mrc.csv -> "mrc"
-      - mrc_swiss.csv -> "mrc_swiss"
-      - rr.csv -> "rr"
-      - nc3.csv -> "nc"
+      - mrc-500.csv -> 500.0
+      - prt12-50.csv -> 50.0
+      - art18-0.csv -> 0.0
     """
-    name = path.stem.lower()
-    if name.startswith("mrc_swiss"):
-        return "mrc_swiss"
-    for prefix in ("art", "prt", "mrc", "rr", "nc", "rpd", "ctr", "vlr", "ice", "s2p1"):
-        if name.startswith(prefix):
-            return prefix
-    return None
-
-
-def infer_prize_pool(path: Path) -> Optional[float]:
-    key = infer_tournament_key_from_filename(path)
-    if key is None:
+    match = re.search(r"-(\d+(?:\.\d+)?)$", path.stem)
+    if not match:
         return None
-    return _TOURNAMENT_PRIZE_POOLS.get(key)
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
 
 
 def compute_formula(
@@ -258,7 +233,7 @@ def main(argv: list[str]) -> int:
         "--prize-pool",
         type=float,
         default=None,
-        help="Override prize pool (X). If omitted, inferred from filename (art/prt/mrc/mrc_swiss/rr/nc).",
+        help="Override prize pool (X). If omitted, inferred from a trailing '-<amount>' in the filename.",
     )
     parser.add_argument(
         "--decimals",

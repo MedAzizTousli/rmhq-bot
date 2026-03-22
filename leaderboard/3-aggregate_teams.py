@@ -49,7 +49,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "IGP™ Ultima Team": "EOZ Ultima",
     "ANGELS": "chicken sellers",
     "vaffanculo ghastly": "chicken sellers",
-    "UDG": "Underdog Gaming",
+    "UDG": "Blind Spot",
     "Monarchy": "Monarchy EC",
     "ELEPHANT": "FC ELEPHANT",
     "Zatrox Esports": "Devil Esport",
@@ -78,6 +78,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
     "Desert elders": "SOLID",
+    "хорошие девочки": "princess",
+    "AS Livorno": "MIST"
 }
 
 DISBANDED_TEAMS: list[str] = [

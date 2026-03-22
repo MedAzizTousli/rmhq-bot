@@ -1087,7 +1087,6 @@ def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None
             pl = "🥈"
         elif pl == "3":
             pl = "🥉"
-        placement_vals.append(pl)
         pts_str = str(to_points_int(r.get("Points", "")))
 
         # Make top 3 teams + points bold (Discord markdown).
@@ -1097,6 +1096,7 @@ def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None
         else:
             team_vals.append(team or "-")
             points_vals.append(pts_str)
+        placement_vals.append(pl)
 
     title_suffix = (date_range or "").strip()
     if title_suffix:
@@ -1461,6 +1461,8 @@ def _country_to_flag(raw: str) -> str | None:
         "greece": "GR",
         "turkey": "TR",
         "ukraine": "UA",
+        "belarus": "BY",
+        "armenia": "AM",
         "russia": "RU",
         "united kingdom": "GB",
         "uk": "GB",

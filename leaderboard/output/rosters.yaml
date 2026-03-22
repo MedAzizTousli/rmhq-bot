@@ -1,13 +1,3 @@
-Overdozee:
-  discord: https://discord.gg/overdozee
-  colors:
-  - 0xC4CFD8
-  - 0x000000
-  roster:
-  - France: 231453477102944257
-  - England: 375517781149483008
-  - France: 1370813691506855946
-  - Serbia: 288129947971747850
 Str1ve Esports:
   discord: https://discord.gg/vUvVppNCBv
   colors:
@@ -19,14 +9,34 @@ Str1ve Esports:
   - Portugal: 569643066940719124
   - Portugal: 260051205634523137
   - Portugal: 381672095916228610
+Overdozee:
+  discord: https://discord.gg/overdozee
+  colors:
+  - 0xC4CFD8
+  - 0x000000
+  roster:
+  - France: 231453477102944257
+  - France: 1370813691506855946
+  - Serbia: 288129947971747850
+Pride Warriors:
+  discord: https://discord.gg/yUYz9pFyje
+  colors:
+  - 0xFF4D8D
+  - 0x8A2BE2
+  roster:
+  - Italy: 1151207345901277184
+  - Italy: 932622305807446016
+  - Italy: 666651298816589845
+  - Italy: 723253728139804796
+  - Italy: 602197237136752653
 Wildcats:
   discord: https://discord.gg/jCxW3QA5Jh
   colors:
   - 0x9A8C81
   - 0x484347
   roster:
-  - France: 952158273316982864
-  - Turkey: 253999954215829506
+  - Serbia: 756565389390905355
+  - Italy: 529306299893153823
   - Bulgaria: 433104649969467393
   - Poland: 273909057356693507
   - Denmark: 157978056621948928
@@ -41,37 +51,17 @@ Yurei:
   - Belgium: 925393201773281321
   - France: 596562129100996618
   - France: 581783342542749708
-Kin:
-  discord: https://discord.gg/E45RNWpYHT
+Overdozee CIS:
+  discord: https://discord.gg/overdozee
   colors:
-  - 0xFFFFFD
-  - 0xD379FD
+  - 0xC4CFD8
+  - 0x000000
   roster:
-  - Italy: 1151207345901277184
-  - France: 1438966863957856417
-  - Italy: 473224186035175444
-  - Portugal: 424551885685522444
-Origin:
-  discord: https://discord.gg/RSjMVhCqg4
-  colors:
-  - 0x8A4AD8
-  - 0x52DAF9
-  roster:
-  - France: 730335543703109653
-  - France: 201738813297393664
-  - France: 302853421005012994
-  - Spain: 391621357546242059
-Majin Purple:
-  discord: https://discord.gg/majinclub
-  colors:
-  - 0xD27BDC
-  - 0x4D1053
-  roster:
-  - France: 234750220896960522
-  - France: 1290012741112823833
-  - France: 1118965784920719441
-  - France: 350581207970349057
-  - Belgium: 812696719371927563
+  - Belarus: 951404691793772564
+  - Armenia: 450659762196185088
+  - Russia: 293320014080114688
+  - Russia: 858402189771931658
+  - Belarus: 455043215666446339
 Beneath Reality:
   discord: https://discord.gg/beneath
   colors:
@@ -83,3 +73,13 @@ Beneath Reality:
   - France: 1360915418717618256
   - France: 564843719644413959
   - France: 1411025571873554644
+Origin:
+  discord: https://discord.gg/RSjMVhCqg4
+  colors:
+  - 0x8A4AD8
+  - 0x52DAF9
+  roster:
+  - France: 730335543703109653
+  - France: 201738813297393664
+  - France: 302853421005012994
+  - Spain: 391621357546242059
