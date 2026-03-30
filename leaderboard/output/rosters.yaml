@@ -9,48 +9,17 @@ Str1ve Esports:
   - Portugal: 569643066940719124
   - Portugal: 260051205634523137
   - Portugal: 381672095916228610
-Overdozee:
-  discord: https://discord.gg/overdozee
-  colors:
-  - 0xC4CFD8
-  - 0x000000
-  roster:
-  - France: 231453477102944257
-  - France: 1370813691506855946
-  - Serbia: 288129947971747850
-Pride Warriors:
+Volare:
   discord: https://discord.gg/yUYz9pFyje
   colors:
-  - 0xFF4D8D
-  - 0x8A2BE2
+  - 0xFFFFFF
+  - 0xAA0700
   roster:
-  - Italy: 1151207345901277184
+  - France: 1150348320649265212
   - Italy: 932622305807446016
   - Italy: 666651298816589845
   - Italy: 723253728139804796
   - Italy: 602197237136752653
-Wildcats:
-  discord: https://discord.gg/jCxW3QA5Jh
-  colors:
-  - 0x9A8C81
-  - 0x484347
-  roster:
-  - Serbia: 756565389390905355
-  - Italy: 529306299893153823
-  - Bulgaria: 433104649969467393
-  - Poland: 273909057356693507
-  - Denmark: 157978056621948928
-Yurei:
-  discord: https://discord.gg/fpuKCZ8qsj
-  colors:
-  - 0xB50D31
-  - 0x000000
-  roster:
-  - France: 246012198198050816
-  - France: 258753879246766082
-  - Belgium: 925393201773281321
-  - France: 596562129100996618
-  - France: 581783342542749708
 Overdozee CIS:
   discord: https://discord.gg/overdozee
   colors:
@@ -69,10 +38,21 @@ Beneath Reality:
   - 0x160912
   roster:
   - France: 628983579766161460
+  - France: 1438966863957856417
   - France: 556199084587876383
   - France: 1360915418717618256
   - France: 564843719644413959
-  - France: 1411025571873554644
+Overdozee:
+  discord: https://discord.gg/overdozee
+  colors:
+  - 0xC4CFD8
+  - 0x000000
+  roster:
+  - France: 952158273316982864
+  - France: 231453477102944257
+  - Italy: 473224186035175444
+  - France: 1370813691506855946
+  - Serbia: 288129947971747850
 Origin:
   discord: https://discord.gg/RSjMVhCqg4
   colors:
@@ -81,5 +61,28 @@ Origin:
   roster:
   - France: 730335543703109653
   - France: 201738813297393664
+  - England: 375517781149483008
   - France: 302853421005012994
   - Spain: 391621357546242059
+Team Moirai:
+  discord: https://discord.gg/MntduX7EaG
+  colors:
+  - 0xECD380
+  - 0xFFFFFF
+  roster:
+  - Italy: 1151207345901277184
+  - Italy: 923209298920738837
+  - Spain: 454270124807946265
+  - Italy: 775755060880867328
+  - Egypt: 532094137973997571
+Yurei:
+  discord: https://discord.gg/fpuKCZ8qsj
+  colors:
+  - 0xB50D31
+  - 0x000000
+  roster:
+  - France: 246012198198050816
+  - France: 258753879246766082
+  - France: 546659086599454722
+  - France: 596562129100996618
+  - France: 581783342542749708

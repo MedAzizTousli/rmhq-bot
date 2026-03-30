@@ -35,7 +35,6 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Sugar Pills": "OVERDOZEE",
     "Evolv ESPORT": "EVOLV",
     "JBG - Jung Brutal Gutaussehend": "Jung-Brutal-Gutaussehend",
-    "ASTRA": "ASTRA eSports",
     "PackMiko": "PackMiko E-sports",
     "RXM Esports": "RXM",
     "K7auzPool": "KlauzPool7",
@@ -63,23 +62,30 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Samba Cookers (FEEL THE AURA)": "Samba Cookers",
     "Samba Cooker": "Samba Cookers",
     "√ ᴠᴏʀᴛᴇx": "Vortex",
-    "100X35": "Pride Warriors",
-    "The Chicks": "Pride Warriors",
-    "Trapani FC": "Pride Warriors",
-    "Karasuno 烏": "Pride Warriors",
-    "Karasuno": "Pride Warriors",
+    "100X35": "Volare",
+    "The Chicks": "Volare",
+    "Trapani FC": "Volare",
+    "Karasuno 烏": "Volare",
+    "Karasuno": "Volare",
+    "Pride Warriors": "Volare",
     "ΞØN Esports": "1Motive",
     "EON Esports": "1Motive",
     "ΩRIGIN": "ORIGIN",
     "Entropy": "Delusion Esports",
-    "NoLimits eSport": "Delusion Esports",
-    "NoLimits eSports": "Delusion Esports",
+    "NoLimits eSport": "NoLimits eSports",
     "ᴘʀʌɢᴍʌ ᴄʟʌɴ": "PRAGMA CLAN",
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
     "Desert elders": "SOLID",
-    "хорошие девочки": "princess",
-    "AS Livorno": "MIST"
+    "AS Livorno": "MIST",
+    "Classic V": "Classic X",
+    "It's showtime...": "ASTRA",
+    "хорошие девочки": "ASTRA",
+    "princess": "ASTRA",
+    "ASTRA eSports": "ASTRA",
+    "FLOW RISING": "EON x FLR",
+    "Origin Iris": "Origin Ascend",
+    "Ωrigin Ascend": "Origin Ascend",
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -94,7 +100,12 @@ DISBANDED_TEAMS: list[str] = [
     "Samba Cookers",
     "JUSTICE",
     "ORION ESPORTS",
-    "Senger X"
+    "Senger X",
+    "Majin Purple",
+    "Dual Esports",
+    "we need name",
+    "PASTEL DE NATA",
+    "SPARTA"
 ]
 
 def normalize_name(name: str) -> str:
