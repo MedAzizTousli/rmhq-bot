@@ -14,91 +14,88 @@ Rank,Team,Points
 13,Monaco,705.00
 14,EOZ Ultima,665.40
 15,X5,553.20
-16,Madness,418.80
-17,Blind Owls,413.40
-18,Focus,372.80
-19,ICE Gaming Group,357.20
-20,1UP,355.00
-21,EON x FLR,336.00
-22,1Motive,326.40
-23,Savage,319.20
-24,Cold Blooded,292.40
-25,Blind Spot,291.20
-26,SOLID,279.40
-27,La Pasión,244.40
-28,PEKKA,242.40
-29,MIST,238.00
-30,Exotic Raccoons,233.60
-31,黄泉 YOMI eSports,228.00
-32,Haze,212.00
-33,Delusion Esports,209.60
-34,Renascença,205.60
-35,Brussels JK Blue Elites,202.40
-36,Seraphim,184.00
-37,Voidborn,163.60
-38,Origin Ascend,152.00
-39,FC ELEPHANT,146.80
-40,Maledict,124.00
-41,RXM,122.00
-42,havoc,118.40
-43,KOI,111.20
-44,Aïd moubarak la team,104.80
-45,BOMBO,104.00
-46,NoLimits eSports,102.40
-47,InFeriX Esports,100.80
-48,Z5,94.00
-49–50,Orpheus,90.40
-49–50,SPARTA,90.40
-51,F5 Black,90.20
-52,Exode,87.00
-53,Kill-Streak Monkey,84.00
-54–55,CLUTCH V,83.20
-54–55,winzy,83.20
-56,PROJECT ZENIN,82.00
-57–58,Classic X,80.00
-57–58,LOS QUE PASHADA,80.00
-59,ZΞRØ,75.00
-60,Ravens,68.00
-61–62,BAM Team,67.80
-61–62,RaketkySK,67.80
-63,I HATE EU TOURNEYS,62.40
-64–65,PRIME EM XOS,56.00
-64–65,Sunder,56.00
-66,Brussels JK,55.60
-67,Limitless eSports,52.20
-68,Haki,48.80
-69–70,Origin Iris,46.80
-69–70,Veni vidi vici,46.80
-71–75,American Freedom,41.60
-71–75,Backboarders,41.60
-71–75,Brussels Blue Elites,41.60
-71–75,FROCIS,41.60
-71–75,Ivory Mantis,41.60
-76–77,Esperion Esports,40.00
-76–77,FXB,40.00
-78,SerapH eSports,38.00
-79,False 5 Blue,35.00
-80–84,Fenix,28.00
-80–84,KIN MARIO BROS,28.00
-80–84,Mysteries of Bangladesh,28.00
-80–84,REFLEX,28.00
-80–84,Team Sniper,28.00
-85,JustWatch,26.00
-86–89,Apollo Esport,20.80
-86–89,ni rematch ni match,20.80
-86–89,Re-volution,20.80
-86–89,Right Click,20.80
-90–91,Anarchy,19.20
-90–91,Vortex,19.20
-92,PRAGMA CLAN,17.40
-93–94,THE VOID 2,10.00
-93–94,VELORA esports,10.00
-95–100,Just for fun,7.00
-95–100,LA Ñ,7.00
-95–100,mini PEKKA,7.00
-95–100,Phantom Prodigies,7.00
-95–100,The Espadas,7.00
-95–100,V5,7.00
-101–103,DLSN x KYOUKAI,5.20
-101–103,Tactical Reset,5.20
-101–103,Thomas Shelbik,5.20
+16,Karma,476.00
+17,Madness,418.80
+18,Blind Owls,413.40
+19,Focus,372.80
+20,ICE Gaming Group,357.20
+21,1UP,355.00
+22,EON x FLR,336.00
+23,1Motive,326.40
+24,Savage,319.20
+25,Cold Blooded,292.40
+26,Blind Spot,291.20
+27,SOLID,279.40
+28,La Pasión,244.40
+29,Brussels JK,244.00
+30,PEKKA,242.40
+31,MIST,238.00
+32,Exotic Raccoons,233.60
+33,黄泉 YOMI eSports,228.00
+34,Z5,218.80
+35,Haze,212.00
+36,Delusion Esports,209.60
+37,Renascença,205.60
+38,Seraphim,184.00
+39,Voidborn,163.60
+40,Origin Ascend,152.00
+41,FC ELEPHANT,146.80
+42,Maledict,124.00
+43,RXM,122.00
+44,havoc,118.40
+45,KOI,111.20
+46,Aïd moubarak la team,104.80
+47,NoLimits eSports,102.40
+48,InFeriX Esports,100.80
+49,Orpheus,90.40
+50,F5 Black,90.20
+51,Exode,87.00
+52,Kill-Streak Monkey,84.00
+53–54,CLUTCH V,83.20
+53–54,winzy,83.20
+55,PROJECT ZENIN,82.00
+56–57,Classic X,80.00
+56–57,LOS QUE PASHADA,80.00
+58,ZΞRØ,75.00
+59,Ravens,68.00
+60–61,BAM Team,67.80
+60–61,RaketkySK,67.80
+62,I HATE EU TOURNEYS,62.40
+63–64,PRIME EM XOS,56.00
+63–64,Sunder,56.00
+65,Brussels JK Academy,55.60
+66,Limitless eSports,52.20
+67,Haki,48.80
+68–69,Origin Iris,46.80
+68–69,Veni vidi vici,46.80
+70–73,American Freedom,41.60
+70–73,Backboarders,41.60
+70–73,FROCIS,41.60
+70–73,Ivory Mantis,41.60
+74–75,Esperion Esports,40.00
+74–75,FXB,40.00
+76,SerapH eSports,38.00
+77,False 5 Blue,35.00
+78–82,Fenix,28.00
+78–82,KIN MARIO BROS,28.00
+78–82,Mysteries of Bangladesh,28.00
+78–82,REFLEX,28.00
+78–82,Team Sniper,28.00
+83,JustWatch,26.00
+84–86,Apollo Esport,20.80
+84–86,ni rematch ni match,20.80
+84–86,Re-volution,20.80
+87–88,Anarchy,19.20
+87–88,Vortex,19.20
+89,PRAGMA CLAN,17.40
+90–91,THE VOID 2,10.00
+90–91,VELORA esports,10.00
+92–97,Just for fun,7.00
+92–97,LA Ñ,7.00
+92–97,mini PEKKA,7.00
+92–97,Phantom Prodigies,7.00
+92–97,The Espadas,7.00
+92–97,V5,7.00
+98–100,DLSN x KYOUKAI,5.20
+98–100,Tactical Reset,5.20
+98–100,Thomas Shelbik,5.20

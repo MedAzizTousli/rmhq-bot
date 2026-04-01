@@ -86,6 +86,11 @@ TEAM_NAME_MAP: dict[str, str] = {
     "FLOW RISING": "EON x FLR",
     "Origin Iris": "Origin Ascend",
     "Ωrigin Ascend": "Origin Ascend",
+    "Right Click": "Z5",
+    "BOMBO": "Z5",
+    "Brussels JK": "Brussels JK Academy",
+    "Brussels Blue Elites": "Brussels JK",
+    "Brussels JK Blue Elites": "Brussels JK",
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -96,7 +101,6 @@ DISBANDED_TEAMS: list[str] = [
     "Team ANDREA",
     "TEAM ENVOY",
     "Devil Esport",
-    "Karma",
     "Samba Cookers",
     "JUSTICE",
     "ORION ESPORTS",

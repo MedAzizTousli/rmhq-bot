@@ -248,7 +248,7 @@ def _build_prediction_results_embed(
 ) -> discord.Embed:
     label = _prediction_month_label(year, month)
     embed = discord.Embed(
-        title=f"🔮 Predictor of the Month — {label}",
+        title=f"🔮 Predictor of the Month | {label}",
         color=0xBE629B,
     )
 
@@ -590,12 +590,10 @@ class PredictionAnswerSelect(discord.ui.Select):
             except Exception:
                 pass
 
-        people_summary = right_people or "No one voted for the correct answer."
         await interaction.followup.send(
             "Prediction saved.\n"
-            f"Question: **{question}**\n"
-            f"Winning answer: **{winning_answer}**\n"
-            f"Correct voters: {people_summary}\n"
+            f"Question: **{_truncate_text(question, 600)}**\n"
+            f"Winning answer: **{_truncate_text(winning_answer, 300)}**\n"
             f"CSV: `{_PREDICTIONS_CSV.relative_to(_REPO_ROOT)}`",
             ephemeral=True,
         )
