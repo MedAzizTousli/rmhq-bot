@@ -40,7 +40,7 @@ _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
 _PREDICTIONS_CSV = _REPO_ROOT / "leaderboard" / "output" / "predictions.csv"
 _PREDICTION_FIELDNAMES = ("poll_date", "message_id", "question", "winning_answer", "all_people", "right_people")
 
-_RULEBOOK_URL = "https://www.notion.so/Rulebook-2cd037d9654180bdba21ea03e737d8d8?source=copy_link"
+_RULEBOOK_URL = "https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
 _LEADERBOARD_POINT_RANGES: list[tuple[int, int, int]] = [
     (1, 1, 100),
