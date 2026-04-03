@@ -1,7 +1,7 @@
 import csv
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -13,13 +13,14 @@ import yaml
 from . import config
 from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team, _find_custom_emoji
 from .team_icons import find_team_icon
-from .tournament_icons import find_icon
+from .tournament_icons import find_icon, unreachable_tournament_icon_urls
 from .notion_api import NotionClient
 from .todays_tournaments import (
     cet_day,
     discord_timestamp,
     detect_props,
     extract_tournament,
+    notion_incomplete_data_warning,
     notion_query_payload_for_today_cups,
     today_cet,
 )
@@ -274,6 +275,63 @@ def _build_prediction_results_embed(
     embed.add_field(name="Accuracy", value="\n".join(accuracy_vals) or "-", inline=True)
     embed.set_footer(text=f"{polls_count} tracked poll(s) in {label}")
     return embed
+
+
+def _gg_month_history_bounds(year: int, month: int) -> tuple[datetime, datetime]:
+    """UTC bounds for `channel.history(after=..., before=...)` covering the calendar month."""
+    tz = timezone.utc
+    first = datetime(year, month, 1, tzinfo=tz)
+    if month == 12:
+        next_first = datetime(year + 1, 1, 1, tzinfo=tz)
+    else:
+        next_first = datetime(year, month + 1, 1, tzinfo=tz)
+    after = first - timedelta(microseconds=1)
+    before = next_first
+    return after, before
+
+
+def _build_gg_class_embed(
+    *,
+    year: int,
+    month: int,
+    ranked: list[tuple[str, int]],
+    total_messages: int,
+) -> discord.Embed:
+    label = _prediction_month_label(year, month)
+    embed = discord.Embed(
+        title=f"<:GG_RMHQ:1489590173212868728> Class of The Month | {label}",
+        color=0xBE629B,
+    )
+    if not ranked:
+        embed.description = "No messages from non-bot users in that month."
+        embed.set_footer(text=f"{total_messages} message(s) scanned · {label}")
+        return embed
+
+    top = ranked[:25]
+    user_lines = [f"<@{uid}>" for uid, _ in top]
+    counter_lines = [str(c) for _, c in top]
+    embed.add_field(name="User", value="\n".join(user_lines), inline=True)
+    embed.add_field(name="Counter", value="\n".join(counter_lines), inline=True)
+    embed.set_footer(text=f"{total_messages} message(s) in {label}")
+    return embed
+
+
+async def _count_gg_messages_for_month(
+    channel: discord.abc.Messageable,
+    *,
+    year: int,
+    month: int,
+) -> tuple[list[tuple[str, int]], int]:
+    after, before = _gg_month_history_bounds(year, month)
+    counts: Counter[str] = Counter()
+    total = 0
+    async for message in channel.history(after=after, before=before, limit=None, oldest_first=False):
+        if getattr(message.author, "bot", False):
+            continue
+        counts[str(message.author.id)] += 1
+        total += 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], int(item[0])))
+    return ranked, total
 
 
 def _parse_message_locator(raw_value: str) -> tuple[int, int | None]:
@@ -880,6 +938,126 @@ class PredictionResultsModal(discord.ui.Modal, title="Calculate Predictions"):
         except discord.DiscordException:
             pass
 
+
+class GgClassModal(discord.ui.Modal, title="Calculate GGs"):
+    month_year = discord.ui.TextInput(
+        label="Month / year",
+        placeholder="e.g. 03/2026 or 2026-03",
+        required=True,
+        max_length=20,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        try:
+            year, month = _parse_prediction_month(self.month_year.value)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.followup.send(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        gg_id = server.gg_channel_id
+        if not gg_id:
+            await interaction.followup.send(
+                "This server is missing `GG_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        gg_ch = interaction.client.get_channel(int(gg_id))
+        if gg_ch is None:
+            try:
+                gg_ch = await interaction.client.fetch_channel(int(gg_id))
+            except discord.NotFound:
+                gg_ch = None
+
+        if gg_ch is None or not hasattr(gg_ch, "history"):
+            await interaction.followup.send(
+                "Couldn't find the GG channel. Check `GG_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            ranked, total_messages = await _count_gg_messages_for_month(gg_ch, year=year, month=month)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to read message history in the GG channel.",
+                ephemeral=True,
+            )
+            return
+
+        embed = _build_gg_class_embed(
+            year=year,
+            month=month,
+            ranked=ranked,
+            total_messages=total_messages,
+        )
+
+        hof_channel_id = _hall_of_fame_channel_id_resolved(server)
+        if not hof_channel_id:
+            await interaction.followup.send(
+                "This server is missing `HALL_OF_FAME_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        hof_channel = await _get_sendable_channel(interaction.guild, int(hof_channel_id))
+        if hof_channel is None:
+            await interaction.followup.send(
+                "Couldn't find the Hall of Fame channel. Check `HALL_OF_FAME_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await hof_channel.send(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I don't have permission to post in the Hall of Fame channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(f"Posted in <#{int(hof_channel_id)}>.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("GgClassModal error:", repr(error))
+        msg = "GG leaderboard failed. Check terminal logs."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
 def _find_guild_emoji_by_name(guild: discord.Guild, name: str) -> str:
     want = (name or "").strip().lower()
     if not want:
@@ -912,6 +1090,20 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
         kinds = [k for k in preferred if k in available]
         return kinds or preferred
     return preferred
+
+
+def _hall_of_fame_channel_id_resolved(server: config.ServerConfig) -> int | None:
+    """Scalar Hall of Fame channel, or first configured type (PRT → ART → FRT) when stored as a map."""
+    cid = _hall_of_fame_channel_id(server)
+    if cid is not None:
+        return int(cid)
+    raw = server.hall_of_fame_channel_id
+    if isinstance(raw, dict) and raw:
+        for t in _pick_tournament_types(server, require_key="hall_of_fame_channel_id"):
+            v = raw.get(t)
+            if v is not None:
+                return int(v)
+    return None
 
 
 async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
@@ -1807,7 +1999,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     entry_and_prize = discord.ui.TextInput(
         label="Entry | Prize | Date & time",
-        placeholder="e.g. €10 | €200 | 2026-02-11 19:00",
+        placeholder="e.g. €10 | €200 | 2026-02-11 19:00 (CET)",
         required=True,
         max_length=120,
     )
@@ -1848,6 +2040,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 
         raw_lines = (self.standings.value or "").splitlines()
         teams = [line.strip() for line in raw_lines if line.strip()][:4]
+        winner_team = teams[0] if teams else ""
         medals = ["1.", "2.", "3.", "4."]
 
         roster_lines, roster_err = _parse_winning_roster(self.winning_roster.value or "")
@@ -1876,7 +2069,7 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         embed.add_field(name="Standings", value="\n".join(lines) or "-", inline=False)
         embed.add_field(name="Winning roster", value="\n".join(roster_lines), inline=False)
 
-        icon_url = find_icon(t_org)
+        icon_url = find_team_icon(winner_team) if winner_team else None
         if icon_url:
             embed.set_thumbnail(url=icon_url)
 
@@ -1937,7 +2130,6 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             msg = await dest.send(**kwargs)
 
             # React with winner + organizer emojis (best-effort).
-            winner_team = teams[0] if teams else ""
             winner_emoji = emoji_for(winner_team, guild)
             org_emoji = emoji_for_org(t_org, guild)
             for r in (winner_emoji, org_emoji):
@@ -3119,6 +3311,16 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
             return
 
+        async with httpx.AsyncClient() as http:
+            unreachable_icons = await unreachable_tournament_icon_urls(
+                (t.organization for t in tournaments_today),
+                http,
+            )
+        notion_incomplete_warning = notion_incomplete_data_warning(
+            tournaments_today,
+            unreachable_icon_urls=unreachable_icons,
+        )
+
         ping_id = server.tournaments_ping_id if server else None
         ping = None
         if ping_id:
@@ -3134,7 +3336,12 @@ class SetupView(discord.ui.View):
                 if preview:
                     content = None
                     if i == 0:
-                        content = f"[PREVIEW] Tournament Today\n{ping or ''}".strip()
+                        preview_lines = ["[PREVIEW] Tournament Today"]
+                        if notion_incomplete_warning:
+                            preview_lines.append("⚠️ Notion data incomplete — see the bot’s ephemeral message.")
+                        if ping:
+                            preview_lines.append(ping)
+                        content = "\n".join(preview_lines)
                     msg = await dest.send(
                         content=content,
                         embeds=embeds,
@@ -3187,8 +3394,16 @@ class SetupView(discord.ui.View):
                 return "I don't have permission to post in the tournaments channel."
             return f"Posted {len(items)} tournaments in <#{upcoming_channel_id}>."
 
+        followup_text = (
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{upcoming_channel_id}>."
+        )
+        if notion_incomplete_warning:
+            followup_text = f"{followup_text}\n\n{notion_incomplete_warning}"
+            if len(followup_text) > 2000:
+                followup_text = _truncate_text(followup_text, 1999)
+
         await interaction.followup.send(
-            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{upcoming_channel_id}>.",
+            followup_text,
             ephemeral=True,
             view=ConfirmPostView(
                 requester_id=interaction.user.id,
@@ -3729,6 +3944,26 @@ class SetupView(discord.ui.View):
 
         await interaction.response.send_modal(PredictionResultsModal())
 
+    @discord.ui.button(
+        label="✌️ Calculate GGs",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:calculate_ggs_setup",
+        row=3,
+    )
+    async def calculate_ggs_setup(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        await interaction.response.send_modal(GgClassModal())
+
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("SetupView error:", repr(error))
         msg = "Something went wrong handling that button."
@@ -4075,5 +4310,24 @@ class SetupPartView(discord.ui.View):
             view=SponsorsTypeView(options=options),
         )
 
+    @discord.ui.button(
+        label="✌️ Calculate GGs",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:calculate_ggs",
+        row=1,
+    )
+    async def calculate_ggs(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        await interaction.response.send_modal(GgClassModal())
 
 

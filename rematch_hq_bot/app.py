@@ -53,6 +53,27 @@ if config.GUILD_ID:
     _setup_kwargs["guild"] = discord.Object(id=config.GUILD_ID)
 
 
+async def _require_guild_administrator(interaction: discord.Interaction, guild: discord.Guild) -> bool:
+    """Send an ephemeral reply and return False if the user is not a guild Administrator."""
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        try:
+            member = await guild.fetch_member(interaction.user.id)
+        except discord.NotFound:
+            await interaction.response.send_message(
+                "Could not verify your permissions for this server.",
+                ephemeral=True,
+            )
+            return False
+    if not member.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "You need the **Administrator** permission to use this command.",
+            ephemeral=True,
+        )
+        return False
+    return True
+
+
 @bot.command(name="sync")
 @commands.guild_only()
 async def sync_prefix(ctx: commands.Context):
@@ -83,10 +104,15 @@ async def sync_prefix(ctx: commands.Context):
         await ctx.reply(f"Sync failed: {e!r}", mention_author=False)
 
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 @bot.tree.command(name="setup", description="Post the Rematch HQ setup panel", **_setup_kwargs)
 async def setup(interaction: discord.Interaction):
     if not interaction.guild or not interaction.channel:
         await interaction.response.send_message("Run this in the server.", ephemeral=True)
+        return
+
+    if not await _require_guild_administrator(interaction, interaction.guild):
         return
 
     if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
@@ -106,17 +132,23 @@ async def setup(interaction: discord.Interaction):
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
             "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
-            "📈 **Calculate Predictions:** Show the top predictors for a given month."
+            "📈 **Calculate Predictions:** Show the top predictors for a given month.\n"
+            "✌️ **Calculate GGs:** Monthly GG message leaderboard (Hall of Fame)."
         ),
         color=0xbe629b,
     )
     await interaction.response.send_message(embed=embed, view=SetupView())
 
 
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 @bot.tree.command(name="setup_part", description="Post the Rematch HQ setup-part panel", **_setup_kwargs)
 async def setup_part(interaction: discord.Interaction):
     if not interaction.guild or not interaction.channel:
         await interaction.response.send_message("Run this in the server.", ephemeral=True)
+        return
+
+    if not await _require_guild_administrator(interaction, interaction.guild):
         return
 
     if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
@@ -132,6 +164,7 @@ async def setup_part(interaction: discord.Interaction):
                     🥇 **Hall of Fame:** Create a hall of fame embed.
                     📊 **Leaderboard:** Post the current leaderboard.
                     💰 **Sponsors:** Create a sponsors embed.
+                    ✌️ **Calculate GGs:** Monthly GG message leaderboard (Hall of Fame).
         """,
         color=0xbe629b,
     )

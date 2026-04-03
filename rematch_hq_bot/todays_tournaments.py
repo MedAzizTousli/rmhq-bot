@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from collections.abc import Collection
+from typing import Any, Sequence
 from zoneinfo import ZoneInfo
+
+from .tournament_icons import find_icon
 
 
 _CET = ZoneInfo("Europe/Paris")
@@ -14,6 +17,8 @@ class Tournament:
     title: str
     organization: str
     starts_at: datetime
+    # True when Notion's date start was YYYY-MM-DD only (no time in the API payload).
+    start_is_date_only: bool
     format: str
     entry_fee_eur: int | float | None
     prize_pool_eur: int | float | None
@@ -60,21 +65,24 @@ def _url(page: dict[str, Any], name: str) -> str:
     return (p.get("url") or "").strip()
 
 
-def _date(page: dict[str, Any], name: str) -> datetime | None:
+def _notion_starts_at(page: dict[str, Any], name: str) -> tuple[datetime | None, bool]:
+    """Parse Notion date start; second value is True if the API value was date-only (no time)."""
     p = _get_prop(page, name) or {}
     d = p.get("date") or {}
     start = d.get("start")
     if not start:
-        return None
-    # Handles "Z" and offsets.
-    s = str(start).replace("Z", "+00:00")
+        return None, False
+    raw = str(start).strip()
+    # Notion sends "2026-04-01" without a clock; with time it includes "T…".
+    start_is_date_only = "T" not in raw
+    s = raw.replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(s)
     except ValueError:
-        return None
+        return None, False
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt, start_is_date_only
 
 
 def extract_tournament(page: dict[str, Any], props: NotionProps) -> Tournament | None:
@@ -85,7 +93,7 @@ def extract_tournament(page: dict[str, Any], props: NotionProps) -> Tournament |
     org = _select(page, props.organization)
     t_type = _select(page, props.type)
     fmt = _select(page, props.format)
-    starts_at = _date(page, props.starts_at)
+    starts_at, start_is_date_only = _notion_starts_at(page, props.starts_at)
 
     if t_type != "Cup":
         return None
@@ -99,11 +107,73 @@ def extract_tournament(page: dict[str, Any], props: NotionProps) -> Tournament |
         title=title,
         organization=org,
         starts_at=starts_at,
+        start_is_date_only=start_is_date_only,
         format=fmt,
         entry_fee_eur=_number(page, props.entry_fee),
         prize_pool_eur=_number(page, props.prize_pool),
         website_url=website,
         discord_url=discord_url,
+    )
+
+
+def notion_incomplete_fields(
+    t: Tournament,
+    *,
+    unreachable_icon_urls: Collection[str] | None = None,
+) -> list[str]:
+    """Human-readable labels for Notion properties that are empty on this row."""
+    missing: list[str] = []
+    org_stripped = (t.organization or "").strip()
+    icon_url = find_icon(org_stripped) if org_stripped else None
+    if not org_stripped:
+        missing.append("organization")
+    elif icon_url is None:
+        # Org is set but does not map to a tournaments/ORG.png key (e.g. non-ASCII-only name).
+        missing.append("organization logo")
+    elif unreachable_icon_urls is not None and icon_url in unreachable_icon_urls:
+        missing.append("organization logo (missing Supabase image)")
+    if t.start_is_date_only:
+        missing.append("Date & Time (date only — add a start time in Notion)")
+    if not (t.format or "").strip():
+        missing.append("format")
+    if t.entry_fee_eur is None:
+        missing.append("entry fee")
+    if t.prize_pool_eur is None:
+        missing.append("prize pool")
+    if not (t.website_url or "").strip():
+        missing.append("website URL")
+    if not (t.discord_url or "").strip():
+        missing.append("Discord URL")
+    return missing
+
+
+def notion_incomplete_data_warning(
+    tournaments: Sequence[Tournament],
+    *,
+    max_items: int = 12,
+    title_max: int = 72,
+    unreachable_icon_urls: Collection[str] | None = None,
+) -> str | None:
+    """Ephemeral warning text when any tournament row is missing expected Notion fields."""
+    detail_lines: list[str] = []
+    for t in tournaments:
+        missing = notion_incomplete_fields(t, unreachable_icon_urls=unreachable_icon_urls)
+        if not missing:
+            continue
+        title = " ".join((t.title or "").split())
+        if len(title) > title_max:
+            title = title[: max(0, title_max - 1)].rstrip() + "…"
+        detail_lines.append(f"• **{title}**: {', '.join(missing)}")
+    if not detail_lines:
+        return None
+    shown = detail_lines[:max_items]
+    tail = ""
+    if len(detail_lines) > max_items:
+        tail = f"\n… and {len(detail_lines) - max_items} more."
+    return (
+        "⚠️ **Notion data is not complete** — some fields are empty. Update Notion, then run this again:\n"
+        + "\n".join(shown)
+        + tail
     )
 
 

@@ -63,6 +63,9 @@ class ServerConfig:
     compliments_channel_id: int | None = None
     compliments_ping_id: int | None = None
 
+    # GG channel (message counts for "Class of the Month").
+    gg_channel_id: int | None = None
+
     # Minimum role ID - team roles will be positioned above this role.
     minimum_role_id: int | None = None
 
@@ -180,6 +183,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 tournaments_ping_id=_as_int(block.get("TOURNAMENTS_PING_ID")),
                 compliments_channel_id=_as_int(block.get("COMPLIMENTS_CHANNEL_ID")),
                 compliments_ping_id=_as_int(block.get("COMPLIMENTS_PING_ID")),
+                gg_channel_id=_as_int(block.get("GG_CHANNEL_ID")),
                 minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
                 tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
                 hall_of_fame_channel_id=_parse_int_or_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
