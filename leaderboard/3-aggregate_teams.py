@@ -35,7 +35,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Sugar Pills": "OVERDOZEE",
     "Evolv ESPORT": "EVOLV",
     "JBG - Jung Brutal Gutaussehend": "Jung-Brutal-Gutaussehend",
-    "PackMiko": "PackMiko E-sports",
+    "PackMiko": "Bloody V",
     "RXM Esports": "RXM",
     "K7auzPool": "KlauzPool7",
     "no name": "noName",
@@ -88,14 +88,17 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Ωrigin Ascend": "Origin Ascend",
     "Right Click": "Z5",
     "BOMBO": "Z5",
-    "Brussels JK": "Brussels JK Academy",
     "Brussels Blue Elites": "Brussels JK",
     "Brussels JK Blue Elites": "Brussels JK",
+    "Beneath Reality": "Kin",
+    "PackMiko E-sports": "Bloody V",
+    "Monaco": "Monaco x AY",
+    "YOMI eSports": "黄泉 YOMI eSports",
+    "Karma": "Beneath Reality"
 }
 
 DISBANDED_TEAMS: list[str] = [
     "Monarchy EC",
-    "KIN",
     "chicken sellers",
     "Str1ve Corp",
     "Team ANDREA",
@@ -108,11 +111,13 @@ DISBANDED_TEAMS: list[str] = [
     "Majin Purple",
     "Dual Esports",
     "we need name",
-    "PASTEL DE NATA",
     "SPARTA",
     "SOLID",
     "ORIGIN",
-    "1Motive"
+    "1Motive",
+    "Origin Ascend",
+    "NoLimits eSports",
+    "Seraphim"
 ]
 
 def normalize_name(name: str) -> str:

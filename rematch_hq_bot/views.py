@@ -1678,6 +1678,8 @@ def _country_to_flag(raw: str) -> str | None:
         "new zealand": "NZ",
         "saudi arabia": "SA",
         "morocco": "MA",
+        "palestine": "PS",
+        "state of palestine": "PS",
         "tunisia": "TN",
         "algeria": "DZ",
         "egypt": "EG",
@@ -1687,6 +1689,24 @@ def _country_to_flag(raw: str) -> str | None:
         return _flag_from_iso2(common[name])
 
     return None
+
+
+def _format_roster_yaml_entries(entries: list) -> list[str]:
+    """Format roster or support YAML list items (single-key dicts: Country -> user id) as Discord lines."""
+    lines: list[str] = []
+    for item in entries:
+        if not isinstance(item, dict) or len(item) != 1:
+            continue
+        country, uid = next(iter(item.items()))
+        if not isinstance(country, str):
+            continue
+        try:
+            uid_i = int(uid)
+        except (TypeError, ValueError):
+            continue
+        flag = _country_to_flag(country) or country.strip()
+        lines.append(f"{flag} <@{uid_i}>")
+    return lines
 
 
 async def _ensure_team_role(
@@ -3472,7 +3492,7 @@ class SetupView(discord.ui.View):
             )
             return
 
-        # Load rosters.yaml as: {team_name: {color: 0x..., roster: [{Country: id}, ...]}}
+        # Load rosters.yaml as: {team_name: {colors, roster, support?, discord, ...}}
         with _ROSTERS_YAML.open("r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         if not isinstance(raw, dict) or not raw:
@@ -3581,6 +3601,7 @@ class SetupView(discord.ui.View):
                     )
 
                 parsed_lines: list[str] = []
+                roster_user_ids: set[int] = set()
                 for item in players:
                     if not isinstance(item, dict) or len(item) != 1:
                         continue
@@ -3591,6 +3612,7 @@ class SetupView(discord.ui.View):
                         uid_i = int(uid)
                     except (TypeError, ValueError):
                         continue
+                    roster_user_ids.add(uid_i)
                     flag = _country_to_flag(country) or country.strip()
                     parsed_lines.append(f"{flag} <@{uid_i}>")
 
@@ -3616,6 +3638,40 @@ class SetupView(discord.ui.View):
                 if not parsed_lines:
                     continue
 
+                support_raw = team_block.get("support")
+                parsed_support_lines = (
+                    _format_roster_yaml_entries(support_raw) if isinstance(support_raw, list) else []
+                )
+
+                if do_role_work and role is not None and isinstance(support_raw, list):
+                    for item in support_raw:
+                        if not isinstance(item, dict) or len(item) != 1:
+                            continue
+                        _, uid = next(iter(item.items()))
+                        try:
+                            uid_i = int(uid)
+                        except (TypeError, ValueError):
+                            continue
+                        if uid_i in roster_user_ids:
+                            continue
+                        try:
+                            member = member_cache.get(uid_i) or interaction.guild.get_member(uid_i)
+                            if member is None:
+                                member = await interaction.guild.fetch_member(uid_i)
+                            member_cache[uid_i] = member
+                            if role in getattr(member, "roles", []):
+                                already_had += 1
+                            else:
+                                await member.add_roles(
+                                    role,
+                                    reason=f"Auto-assigned from rosters.yaml (support) by {interaction.user} ({interaction.user.id})",
+                                )
+                                assigned += 1
+                        except discord.NotFound:
+                            missing_members += 1
+                        except (discord.Forbidden, discord.HTTPException):
+                            role_failures += 1
+
                 team_emoji = emoji_for(team_name, interaction.guild)
                 role_tag = role.mention if role is not None else team_name
                 bits: list[str] = []
@@ -3626,12 +3682,17 @@ class SetupView(discord.ui.View):
                 bits.append(role_tag)
                 team_heading = "### " + " ".join(bits)
 
-                # Optional Discord link for the team, shown under the heading and above the roster
+                # Optional invite: one h3 line with linked label (no separate "Discord" heading)
                 discord_url = team_block.get("discord")
                 description_parts: list[str] = [team_heading]
-                if isinstance(discord_url, str) and discord_url.strip():
-                    description_parts.append(f"### <:Discord:1475149721369837721> [Discord Server]({discord_url.strip()})")
+                description_parts.append("### Roster")
                 description_parts.extend(parsed_lines)
+                if parsed_support_lines:
+                    description_parts.append("### Support")
+                    description_parts.extend(parsed_support_lines)
+                if isinstance(discord_url, str) and discord_url.strip():
+                    u = discord_url.strip()
+                    description_parts.append(f"### [Discord URL]({u})")
 
                 e = discord.Embed(
                     title=None,
