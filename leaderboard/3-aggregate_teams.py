@@ -71,14 +71,13 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ΞØN Esports": "1Motive",
     "EON Esports": "1Motive",
     "ΩRIGIN": "ORIGIN",
-    "Entropy": "Delusion Esports",
+    "Entropy": "Death Cloud Esports",
     "NoLimits eSport": "NoLimits eSports",
     "ᴘʀʌɢᴍʌ ᴄʟʌɴ": "PRAGMA CLAN",
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
     "Desert elders": "SOLID",
     "AS Livorno": "MIST",
-    "Classic V": "Classic X",
     "It's showtime...": "ASTRA",
     "хорошие девочки": "ASTRA",
     "princess": "ASTRA",
@@ -94,7 +93,10 @@ TEAM_NAME_MAP: dict[str, str] = {
     "PackMiko E-sports": "Bloody V",
     "Monaco": "Monaco x AY",
     "YOMI eSports": "黄泉 YOMI eSports",
-    "Karma": "Beneath Reality"
+    "Karma": "Beneath Reality",
+    "Mist": "DX x MIST",
+    "Delusion Esports": "Death Cloud Esports",
+    "Classic X": "Classic V"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -117,7 +119,10 @@ DISBANDED_TEAMS: list[str] = [
     "1Motive",
     "Origin Ascend",
     "NoLimits eSports",
-    "Seraphim"
+    "Seraphim",
+    "El Cid Campeonador",
+    "Voidborn",
+    "FC ELEPHANT"
 ]
 
 def normalize_name(name: str) -> str:
