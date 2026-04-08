@@ -1572,6 +1572,37 @@ def _split_org_and_name(raw: str) -> tuple[str, str] | None:
     return org, name
 
 
+def _parse_tournament_name_url_block(raw: str) -> tuple[tuple[str, str] | None, str | None, str | None]:
+    """
+    Two-line (or more) block: first line `ORG | Name`, another line tournament URL (https...).
+    Returns ((org, name), url, error_message).
+    """
+    lines = [ln.strip() for ln in (raw or "").splitlines() if ln.strip()]
+    name_line: str | None = None
+    url_line: str | None = None
+    for ln in lines:
+        low = ln.lower()
+        if low.startswith("http://") or low.startswith("https://"):
+            if url_line is None:
+                url_line = ln.strip()
+            continue
+        if "|" in ln:
+            parsed = _split_org_and_name(ln)
+            if parsed and name_line is None:
+                name_line = ln
+    if not name_line:
+        return None, None, (
+            "Line 1: `ORG | Tournament name` (e.g. `MRC | Rematch Weekly #12`).\n"
+            "Line 2: tournament URL starting with `https://`."
+        )
+    org_name = _split_org_and_name(name_line)
+    if not org_name:
+        return None, None, "Tournament line must look like `ORG | Tournament name`."
+    if not url_line:
+        return None, None, "Add the tournament URL on its own line (starting with `https://`)."
+    return org_name, url_line, None
+
+
 def _flag_from_iso2(code: str) -> str | None:
     c = (code or "").strip().upper()
     if len(c) != 2 or not c.isalpha():
@@ -1910,7 +1941,7 @@ async def _ensure_team_role(
     return role
 
 
-def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
+def _parse_winning_roster(raw: str, *, required: bool = True) -> tuple[list[str], str | None]:
     """
     Input: one player per line:
       <discord id or mention> <country>
@@ -1922,7 +1953,7 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
       - France (common names only)
 
     Output lines: "🇫🇷 <@123...>"
-    Returns (lines, error_message)
+    Returns (lines, error_message). If required is False, empty input yields ([], None).
     """
     lines_in = (raw or "").splitlines()
     out: list[str] = []
@@ -1952,12 +1983,14 @@ def _parse_winning_roster(raw: str) -> tuple[list[str], str | None]:
         out.append(f"{flag} <@{uid}>")
 
     if not out:
-        return [], "Winning roster is required (at least 1 player line)."
+        if required:
+            return [], "Winning roster is required (at least 1 player line)."
+        return [], None
 
     return out, None
 
 
-def _parse_roster(raw: str) -> tuple[list[str], str | None]:
+def _parse_roster(raw: str, *, required: bool = True) -> tuple[list[str], str | None]:
     """
     Input: one player per line, in either order:
       <country> <discord id or mention>
@@ -1970,7 +2003,7 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
       - common country names (limited list)
 
     Output lines: "🇫🇷 <@123...>"
-    Returns (lines, error_message)
+    Returns (lines, error_message). If required is False, empty input yields ([], None).
     """
     lines_in = (raw or "").splitlines()
     out: list[str] = []
@@ -1999,23 +2032,39 @@ def _parse_roster(raw: str) -> tuple[list[str], str | None]:
         out.append(f"{flag} <@{uid}>")
 
     if not out:
-        return [], "Roster is required (at least 1 player line)."
+        if required:
+            return [], "Roster is required (at least 1 player line)."
+        return [], None
 
     return out, None
 
 
+def _parse_frt_edition_team(raw: str) -> tuple[int | None, str | None, str | None]:
+    """
+    Parse combined "edition | team" for FRT Hall of Fame (saves one modal row).
+    Returns (edition, team, error_message).
+    """
+    s = (raw or "").strip()
+    if "|" not in s:
+        return None, None, "Use format `Edition | Team` (e.g. `1 | OVERDOZEE`)."
+    left, right = s.split("|", 1)
+    ed_raw = left.strip()
+    team = " ".join(right.strip().split())
+    m = re.search(r"\d+", ed_raw)
+    if not m:
+        return None, None, "Edition must contain a number (e.g. `1`)."
+    if not team:
+        return None, None, "Team name is required after `|`."
+    return int(m.group(0)), team, None
+
+
 class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
-    tournament_name = discord.ui.TextInput(
-        label="Tournament (ORG | Name)",
-        placeholder="e.g. MRC | Rematch Weekly #12",
+    tournament_name_and_url = discord.ui.TextInput(
+        label="Tournament (ORG | Name) + URL",
+        placeholder="MRC | Rematch Weekly #12\nhttps://battlefy.com/...",
+        style=discord.TextStyle.paragraph,
         required=True,
-        max_length=80,
-    )
-    tournament_url = discord.ui.TextInput(
-        label="Tournament URL",
-        placeholder="https://...",
-        required=True,
-        max_length=200,
+        max_length=400,
     )
     entry_and_prize = discord.ui.TextInput(
         label="Entry | Prize | Date & time",
@@ -2037,17 +2086,20 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         required=True,
         max_length=400,
     )
+    winning_support = discord.ui.TextInput(
+        label="Winning support (optional, same format)",
+        placeholder="Leave blank if none",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=400,
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
-        org_and_name = _split_org_and_name(self.tournament_name.value or "")
-        if not org_and_name:
-            await interaction.response.send_message(
-                "Tournament format: `MRC | Rematch Weekly #12`",
-                ephemeral=True,
-            )
+        org_and_name, t_url, name_url_err = _parse_tournament_name_url_block(self.tournament_name_and_url.value or "")
+        if name_url_err or not org_and_name or not t_url:
+            await interaction.response.send_message(name_url_err or "Invalid tournament name or URL.", ephemeral=True)
             return
         t_org, t_name = org_and_name
-        t_url = (self.tournament_url.value or "").strip()
         entry_prize_time = _split_entry_prize_and_time(self.entry_and_prize.value or "")
         if not entry_prize_time:
             await interaction.response.send_message(
@@ -2075,19 +2127,46 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             )
             return
 
+        support_lines, support_err = _parse_winning_roster(self.winning_support.value or "", required=False)
+        if support_err:
+            await interaction.response.send_message(
+                "Winning support format (same as winning roster, one per line):\n"
+                "`<@123456789012345678> FR`\n"
+                "`123456789012345678 :flag_fr:`\n"
+                "`<@123456789012345678> 🇫🇷`\n\n"
+                f"{support_err}",
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        if guild:
+            try:
+                await guild.fetch_emojis()
+            except discord.HTTPException:
+                pass
+
         lines: list[str] = []
         for i, name in enumerate(teams):
             medal = medals[i]
-            e = emoji_for(name, interaction.guild)
+            e = emoji_for(name, guild)
             lines.append(f"{medal} {e + ' ' if e else ''}{name}")
 
-        embed = discord.Embed(title=t_name, color=0xbe629b)
+        org_emoji = emoji_for_org(t_org, guild)
+        # Custom server emojis often do not render in embed titles; use description as the headline
+        # when we have an org emoji so it displays consistently.
+        if org_emoji:
+            embed = discord.Embed(description=f"{org_emoji} **{t_name}**", color=0xbe629b)
+        else:
+            embed = discord.Embed(title=t_name, color=0xbe629b)
         embed.add_field(name="Tournament", value=f"[URL]({t_url})", inline=True)
         embed.add_field(name="Entry fee", value=t_entry, inline=True)
         embed.add_field(name="Prize pool", value=t_prize, inline=True)
         embed.add_field(name="Date & time", value=t_when, inline=False)
         embed.add_field(name="Standings", value="\n".join(lines) or "-", inline=False)
         embed.add_field(name="Winning roster", value="\n".join(roster_lines), inline=False)
+        if support_lines:
+            embed.add_field(name="Winning support", value="\n".join(support_lines), inline=False)
 
         icon_url = find_team_icon(winner_team) if winner_team else None
         if icon_url:
@@ -2534,6 +2613,13 @@ class HallOfFameModal(discord.ui.Modal):
         required=True,
         max_length=600,
     )
+    support = discord.ui.TextInput(
+        label="Support (optional, same format as roster)",
+        placeholder="Leave blank if none",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=600,
+    )
 
     def __init__(self, *, tournament_type: str):
         self.tournament_type = (tournament_type or "").strip().upper()
@@ -2584,6 +2670,18 @@ class HallOfFameModal(discord.ui.Modal):
             )
             return
 
+        support_lines, support_err = _parse_roster(self.support.value or "", required=False)
+        if support_err:
+            await interaction.response.send_message(
+                "Support format (same as roster, one per line):\n"
+                "`FR 123456789012345678`\n"
+                "`:flag_fr: <@123456789012345678>`\n"
+                "`🇫🇷 123456789012345678`\n\n"
+                f"{support_err}",
+                ephemeral=True,
+            )
+            return
+
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
 
         # Use the public TEAM icon URL as the main embed image (not thumbnail).
@@ -2596,6 +2694,8 @@ class HallOfFameModal(discord.ui.Modal):
         embed = discord.Embed(title=title, color=int(color))
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=False)
         embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
+        if support_lines:
+            embed.add_field(name="Support", value="\n".join(support_lines), inline=False)
 
         if team_icon_url:
             embed.set_image(url=team_icon_url)
@@ -2649,19 +2749,13 @@ class HallOfFameModal(discord.ui.Modal):
 
 
 class FRTHallOfFameModal(discord.ui.Modal):
-    """Hall of Fame modal for FRT: adds Mode field, Mode and Bracket inline."""
+    """Hall of Fame modal for FRT: Mode + Bracket inline; edition+team combined (5 modal rows max)."""
 
-    edition_number = discord.ui.TextInput(
-        label="Edition number",
-        placeholder="e.g. 1",
+    edition_and_team = discord.ui.TextInput(
+        label="Edition | Team name",
+        placeholder="e.g. 1 | OVERDOZEE",
         required=True,
-        max_length=10,
-    )
-    team_name = discord.ui.TextInput(
-        label="Team name",
-        placeholder="e.g. OVERDOZEE",
-        required=True,
-        max_length=60,
+        max_length=80,
     )
     bracket_url = discord.ui.TextInput(
         label="Bracket URL",
@@ -2680,6 +2774,13 @@ class FRTHallOfFameModal(discord.ui.Modal):
         placeholder="FR 123456789012345678\nMA <@123456789012345678>\n:flag_es: 123456789012345678",
         style=discord.TextStyle.paragraph,
         required=True,
+        max_length=600,
+    )
+    support = discord.ui.TextInput(
+        label="Support (optional, same format as roster)",
+        placeholder="Leave blank if none",
+        style=discord.TextStyle.paragraph,
+        required=False,
         max_length=600,
     )
 
@@ -2708,14 +2809,11 @@ class FRTHallOfFameModal(discord.ui.Modal):
             )
             return
 
-        ed_raw = (self.edition_number.value or "").strip()
-        m = re.search(r"\d+", ed_raw)
-        if not m:
-            await interaction.response.send_message("Edition number must contain a number (e.g. `1`).", ephemeral=True)
+        edition, team, et_err = _parse_frt_edition_team(self.edition_and_team.value or "")
+        if et_err or edition is None or team is None:
+            await interaction.response.send_message(et_err or "Invalid edition or team.", ephemeral=True)
             return
-        edition = int(m.group(0))
 
-        team = " ".join((self.team_name.value or "").strip().split())
         url = (self.bracket_url.value or "").strip()
         mode_val = (self.mode.value or "").strip() or "-"
 
@@ -2731,6 +2829,18 @@ class FRTHallOfFameModal(discord.ui.Modal):
             )
             return
 
+        support_lines, support_err = _parse_roster(self.support.value or "", required=False)
+        if support_err:
+            await interaction.response.send_message(
+                "Support format (same as roster, one per line):\n"
+                "`FR 123456789012345678`\n"
+                "`:flag_fr: <@123456789012345678>`\n"
+                "`🇫🇷 123456789012345678`\n\n"
+                f"{support_err}",
+                ephemeral=True,
+            )
+            return
+
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
         team_icon_url = find_team_icon(team)
         team_emoji = await _ensure_team_emoji(interaction.guild, team)
@@ -2740,6 +2850,8 @@ class FRTHallOfFameModal(discord.ui.Modal):
         embed.add_field(name="Mode", value=mode_val, inline=True)
         embed.add_field(name="Bracket", value=f"[Battlefy]({url})" if url else "-", inline=True)
         embed.add_field(name="Roster", value="\n".join(roster_lines) or "-", inline=False)
+        if support_lines:
+            embed.add_field(name="Support", value="\n".join(support_lines), inline=False)
 
         if team_icon_url:
             embed.set_image(url=team_icon_url)

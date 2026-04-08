@@ -115,7 +115,6 @@ DISBANDED_TEAMS: list[str] = [
     "we need name",
     "SPARTA",
     "SOLID",
-    "ORIGIN",
     "1Motive",
     "Origin Ascend",
     "NoLimits eSports",

@@ -6,94 +6,95 @@ Rank,Team,Points
 5,OVERDOZEE CIS,2282.00
 6,wildcats,1550.00
 7,Kin,1291.00
-8,ASTRA,1205.60
-9,YUREI,1100.00
-10,Monaco x AY,1083.40
-11,Bloody V,973.00
-12,Madness,956.00
-13,Reborn Xi,765.60
-14,Beneath Reality,704.80
-15,EOZ Ultima,685.00
-16,Blind Owls,659.00
-17,Exotic Raccoons,623.20
-18,EON x FLR,496.00
-19,ICE Gaming Group,467.60
-20,X5,446.40
-21,PASTEL DE NATA,432.00
-22,1UP,425.40
-23,Drain Cats,413.60
-24,Renascença,375.20
-25,Focus,362.40
-26,Z5,358.00
-27,Blind Spot,348.80
-28,Savage,341.60
-29,VEX,290.40
-30,PEKKA,285.60
-31,Brussels JK,280.80
-32,DX x MIST,274.80
-33,Cold Blooded,274.40
-34,RXM,201.60
-35,黄泉 YOMI eSports,194.40
-36–37,Classic V,185.60
-36–37,LOS QUE PASHADA,185.60
-38,Death Cloud Esports,168.00
-39,InFeriX Esports,159.60
-40,Ravens,138.40
-41,Haze,126.40
-42,Maledict,124.00
-43,Fenix,107.20
-44–45,Morty's Minions,105.60
-44–45,VALNOX,105.60
-46,Exode,87.00
-47–48,Aïd moubarak la team,84.00
-47–48,Kill-Streak Monkey,84.00
-49,ZΞRØ,75.00
-50,Haki,72.00
-51–52,Born To Evolve,70.40
-51–52,Dark Impulse,70.40
-53,PRIME EM XOS,64.80
-54,Team Sniper,63.20
-55,Anarchy,58.00
-56–58,havoc,56.00
-56–58,PROJECT ZENIN,56.00
-56–58,Sunder,56.00
-59,Limitless eSports,55.80
-60,Esperion Esports,48.80
-61–62,BAM Team,47.00
-61–62,RaketkySK,47.00
-63,SerapH eSports,46.80
-64–66,mini PEKKA,42.20
-64–66,Phantom Prodigies,42.20
-64–66,The Espadas,42.20
-67,FXB,40.00
-68–72,eclipse refund,35.20
-68–72,FRAUDES,35.20
-68–72,L9,35.20
-68–72,Les Simpson,35.20
-68–72,ni rematch ni match,35.20
-73,False 5 Blue,35.00
-74–78,KIN MARIO BROS,28.00
-74–78,KOI,28.00
-74–78,Mysteries of Bangladesh,28.00
-74–78,Orpheus,28.00
-74–78,REFLEX,28.00
-79,Vortex,22.80
-80,Backboarders,17.60
-81,Brussels JK Academy,14.00
-82–83,THE VOID 2,10.00
-82–83,VELORA esports,10.00
-84–93,Drain Dogs,8.80
-84–93,Full Send Protocol,8.80
-84–93,Mitsune,8.80
-84–93,Mythical Woods,8.80
-84–93,NEXT GEN UNITED,8.80
-84–93,Onyx,8.80
-84–93,Team Solaris,8.80
-84–93,Team Villain,8.80
-84–93,Win Condition,8.80
-84–93,ZERO,8.80
-94–98,F5 Black,7.00
-94–98,Just for fun,7.00
-94–98,LA Ñ,7.00
-94–98,PRAGMA CLAN,7.00
-94–98,V5,7.00
+8,ORIGIN,1230.60
+9,ASTRA,1205.60
+10,YUREI,1100.00
+11,Monaco x AY,1083.40
+12,Bloody V,973.00
+13,Madness,956.00
+14,Reborn Xi,765.60
+15,Beneath Reality,704.80
+16,EOZ Ultima,685.00
+17,Blind Owls,659.00
+18,Exotic Raccoons,623.20
+19,EON x FLR,496.00
+20,ICE Gaming Group,467.60
+21,X5,446.40
+22,PASTEL DE NATA,432.00
+23,1UP,425.40
+24,Drain Cats,413.60
+25,Renascença,375.20
+26,Focus,362.40
+27,Z5,358.00
+28,Blind Spot,348.80
+29,Savage,341.60
+30,VEX,290.40
+31,PEKKA,285.60
+32,Brussels JK,280.80
+33,DX x MIST,274.80
+34,Cold Blooded,274.40
+35,RXM,201.60
+36,黄泉 YOMI eSports,194.40
+37–38,Classic V,185.60
+37–38,LOS QUE PASHADA,185.60
+39,Death Cloud Esports,168.00
+40,InFeriX Esports,159.60
+41,Ravens,138.40
+42,Haze,126.40
+43,Maledict,124.00
+44,Fenix,107.20
+45–46,Morty's Minions,105.60
+45–46,VALNOX,105.60
+47,Exode,87.00
+48–49,Aïd moubarak la team,84.00
+48–49,Kill-Streak Monkey,84.00
+50,ZΞRØ,75.00
+51,Haki,72.00
+52–53,Born To Evolve,70.40
+52–53,Dark Impulse,70.40
+54,PRIME EM XOS,64.80
+55,Team Sniper,63.20
+56,Anarchy,58.00
+57–59,havoc,56.00
+57–59,PROJECT ZENIN,56.00
+57–59,Sunder,56.00
+60,Limitless eSports,55.80
+61,Esperion Esports,48.80
+62–63,BAM Team,47.00
+62–63,RaketkySK,47.00
+64,SerapH eSports,46.80
+65–67,mini PEKKA,42.20
+65–67,Phantom Prodigies,42.20
+65–67,The Espadas,42.20
+68,FXB,40.00
+69–73,eclipse refund,35.20
+69–73,FRAUDES,35.20
+69–73,L9,35.20
+69–73,Les Simpson,35.20
+69–73,ni rematch ni match,35.20
+74,False 5 Blue,35.00
+75–79,KIN MARIO BROS,28.00
+75–79,KOI,28.00
+75–79,Mysteries of Bangladesh,28.00
+75–79,Orpheus,28.00
+75–79,REFLEX,28.00
+80,Vortex,22.80
+81,Backboarders,17.60
+82,Brussels JK Academy,14.00
+83–84,THE VOID 2,10.00
+83–84,VELORA esports,10.00
+85–94,Drain Dogs,8.80
+85–94,Full Send Protocol,8.80
+85–94,Mitsune,8.80
+85–94,Mythical Woods,8.80
+85–94,NEXT GEN UNITED,8.80
+85–94,Onyx,8.80
+85–94,Team Solaris,8.80
+85–94,Team Villain,8.80
+85–94,Win Condition,8.80
+85–94,ZERO,8.80
+95–99,F5 Black,7.00
+95–99,Just for fun,7.00
+95–99,LA Ñ,7.00
+95–99,PRAGMA CLAN,7.00
+95–99,V5,7.00

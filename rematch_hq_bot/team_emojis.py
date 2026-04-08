@@ -43,9 +43,24 @@ def emoji_for(team_name: str, guild: discord.Guild | None) -> str:
 def emoji_for_org(org_code: str, guild: discord.Guild | None) -> str:
     if not guild:
         return ""
-    code = re.sub(r"[^0-9A-Za-z_]", "", org_code.strip())
-    if not code:
+    raw = org_code.strip()
+    if not raw:
         return ""
-    e = _find_custom_emoji(guild, code) or _find_custom_emoji(guild, code.lower())
-    return str(e) if e else ""
+    candidates: list[str] = []
+    under = re.sub(r"[^0-9A-Za-z_]", "", raw.replace(" ", "_"))
+    if under:
+        candidates.append(under)
+    compact = re.sub(r"[^0-9A-Za-z_]", "", raw)
+    if compact and compact not in candidates:
+        candidates.append(compact)
+    parts = [p for p in re.split(r"[\s_-]+", raw) if p]
+    if len(parts) >= 2:
+        tail = re.sub(r"[^0-9A-Za-z_]", "", parts[-1])
+        if tail and tail not in candidates:
+            candidates.append(tail)
+    for code in candidates:
+        e = _find_custom_emoji(guild, code) or _find_custom_emoji(guild, code.lower())
+        if e:
+            return str(e)
+    return ""
 
