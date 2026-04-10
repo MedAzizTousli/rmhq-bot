@@ -11,8 +11,14 @@ import httpx
 import yaml
 
 from . import config
-from .team_emojis import emoji_for, emoji_for_org, emoji_name_for_team, _find_custom_emoji
-from .team_icons import find_team_icon
+from .team_emojis import (
+    emoji_for,
+    emoji_for_org,
+    emoji_name_for_org,
+    emoji_name_for_team,
+    _find_custom_emoji,
+)
+from .team_icons import find_team_icon, unreachable_team_icon_urls
 from .tournament_icons import find_icon, unreachable_tournament_icon_urls
 from .notion_api import NotionClient
 from .todays_tournaments import (
@@ -1138,7 +1144,45 @@ async def _ensure_team_emoji(guild: discord.Guild, team_name: str) -> str:
         created = await guild.create_custom_emoji(
             name=emoji_name,
             image=img,
-            reason="Auto-added for sponsor/Hall of Fame post",
+            reason="Auto-added team emoji from Supabase logo",
+        )
+        return str(created)
+    except (httpx.HTTPError, discord.Forbidden, discord.HTTPException):
+        return ""
+
+
+async def _ensure_org_emoji(guild: discord.Guild, org_code: str) -> str:
+    """
+    Return the tournament organizer custom emoji if on the guild.
+    If missing, best-effort upload from public/tournaments/{CODE}.png on Supabase.
+    """
+    raw = " ".join((org_code or "").strip().split())
+    if not raw:
+        return ""
+
+    existing = emoji_for_org(raw, guild)
+    if existing:
+        return existing
+
+    icon_url = find_icon(raw)
+    if not icon_url:
+        return ""
+
+    emoji_name = emoji_name_for_org(raw)[:32]
+    if not emoji_name:
+        return ""
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+            resp = await client.get(icon_url)
+            resp.raise_for_status()
+            img = resp.content
+        if not (0 < len(img) <= 256 * 1024):
+            return ""
+        created = await guild.create_custom_emoji(
+            name=emoji_name,
+            image=img,
+            reason="Auto-added tournament organizer emoji from Supabase logo",
         )
         return str(created)
     except (httpx.HTTPError, discord.Forbidden, discord.HTTPException):
@@ -2058,6 +2102,45 @@ def _parse_frt_edition_team(raw: str) -> tuple[int | None, str | None, str | Non
     return int(m.group(0)), team, None
 
 
+def _tournament_results_supabase_asset_warning(
+    t_org: str,
+    teams: list[str],
+    *,
+    unreachable_org_urls: frozenset[str],
+    unreachable_team_urls: frozenset[str],
+) -> str | None:
+    """Ephemeral warning when organizer or team logos are missing or not reachable on Supabase."""
+    lines: list[str] = []
+    org_s = (t_org or "").strip()
+    if org_s:
+        ou = find_icon(org_s)
+        if ou is None:
+            lines.append(
+                f"• **Organizer ({org_s})**: no `public/tournaments/` image key "
+                "(org code must include ASCII letters or numbers)."
+            )
+        elif ou in unreachable_org_urls:
+            lines.append(f"• **Organizer ({org_s})**: PNG missing in Supabase (`public/tournaments/`).")
+
+    for nm in teams:
+        name = (nm or "").strip()
+        if not name:
+            continue
+        tu = find_team_icon(name)
+        if tu is None:
+            lines.append(f"• **Team \"{name}\"**: no `public/teams/` image key.")
+        elif tu in unreachable_team_urls:
+            lines.append(f"• **Team \"{name}\"**: PNG missing in Supabase (`public/teams/`).")
+
+    if not lines:
+        return None
+    return (
+        "⚠️ **Some logos are missing in Supabase** — thumbnails or auto-added emojis may be incomplete "
+        "until you upload:\n"
+        + "\n".join(lines)
+    )
+
+
 class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     tournament_name_and_url = discord.ui.TextInput(
         label="Tournament (ORG | Name) + URL",
@@ -2139,20 +2222,26 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             )
             return
 
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        # Defer before fetch_emojis / emoji uploads — Discord allows ~3s for the first response.
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         guild = interaction.guild
-        if guild:
-            try:
-                await guild.fetch_emojis()
-            except discord.HTTPException:
-                pass
+        try:
+            await guild.fetch_emojis()
+        except discord.HTTPException:
+            pass
 
         lines: list[str] = []
         for i, name in enumerate(teams):
             medal = medals[i]
-            e = emoji_for(name, guild)
+            e = await _ensure_team_emoji(guild, name)
             lines.append(f"{medal} {e + ' ' if e else ''}{name}")
 
-        org_emoji = emoji_for_org(t_org, guild)
+        org_emoji = await _ensure_org_emoji(guild, t_org)
         # Custom server emojis often do not render in embed titles; use description as the headline
         # when we have an org emoji so it displays consistently.
         if org_emoji:
@@ -2172,14 +2261,10 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         if icon_url:
             embed.set_thumbnail(url=icon_url)
 
-        if not interaction.guild:
-            await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        server = config.server_for_guild_id(interaction.guild.id)
+        server = config.server_for_guild_id(guild.id)
         results_channel_id = server.results_tournaments_channel_id if server else None
         if not results_channel_id:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "This server is missing `RESULTS_TOURNAMENTS_CHANNEL_ID` in `config.yaml`.",
                 ephemeral=True,
             )
@@ -2187,21 +2272,33 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 
         test_channel_id = server.test_channel_id if server else None
         if not test_channel_id:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
                 ephemeral=True,
             )
             return
 
-        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        test_channel = await _get_sendable_channel(guild, int(test_channel_id))
         if test_channel is None:
-            await interaction.response.send_message("Couldn't find the test channel.", ephemeral=True)
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
             return
 
+        async with httpx.AsyncClient() as http:
+            bad_org = await unreachable_tournament_icon_urls([t_org], http)
+            bad_teams = await unreachable_team_icon_urls(teams, http)
+        storage_warning = _tournament_results_supabase_asset_warning(
+            t_org,
+            teams,
+            unreachable_org_urls=bad_org,
+            unreachable_team_urls=bad_teams,
+        )
+
         # Post preview first (no pings).
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        preview_lines = ["[PREVIEW] Tournament Results"]
+        if storage_warning:
+            preview_lines.append("⚠️ Some Supabase logos missing — see the bot’s ephemeral message.")
         preview_kwargs = dict(
-            content="[PREVIEW] Tournament Results",
+            content="\n".join(preview_lines),
             embed=embed,
             allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
         )
@@ -2229,8 +2326,8 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
             msg = await dest.send(**kwargs)
 
             # React with winner + organizer emojis (best-effort).
-            winner_emoji = emoji_for(winner_team, guild)
-            org_emoji = emoji_for_org(t_org, guild)
+            winner_emoji = await _ensure_team_emoji(guild, winner_team)
+            org_emoji = await _ensure_org_emoji(guild, t_org)
             for r in (winner_emoji, org_emoji):
                 if not r:
                     continue
@@ -2241,8 +2338,16 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 
             return f"Posted in <#{results_channel_id}>."
 
+        followup_text = (
+            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{results_channel_id}>."
+        )
+        if storage_warning:
+            followup_text = f"{followup_text}\n\n{storage_warning}"
+            if len(followup_text) > 2000:
+                followup_text = _truncate_text(followup_text, 1999)
+
         await interaction.followup.send(
-            f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{results_channel_id}>.",
+            followup_text,
             ephemeral=True,
             view=ConfirmPostView(
                 requester_id=interaction.user.id,
@@ -2258,10 +2363,13 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         print("TournamentResultsModal error:", repr(error))
         msg = "Something went wrong while creating the results embed."
-        if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
-        else:
-            await interaction.response.send_message(msg, ephemeral=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except (discord.NotFound, discord.HTTPException):
+            pass
 
 
 class TournamentInfoModal(discord.ui.Modal):

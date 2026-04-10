@@ -40,12 +40,10 @@ def emoji_for(team_name: str, guild: discord.Guild | None) -> str:
     return ""
 
 
-def emoji_for_org(org_code: str, guild: discord.Guild | None) -> str:
-    if not guild:
-        return ""
-    raw = org_code.strip()
+def _org_emoji_name_candidates(org_code: str) -> list[str]:
+    raw = (org_code or "").strip()
     if not raw:
-        return ""
+        return []
     candidates: list[str] = []
     under = re.sub(r"[^0-9A-Za-z_]", "", raw.replace(" ", "_"))
     if under:
@@ -58,7 +56,21 @@ def emoji_for_org(org_code: str, guild: discord.Guild | None) -> str:
         tail = re.sub(r"[^0-9A-Za-z_]", "", parts[-1])
         if tail and tail not in candidates:
             candidates.append(tail)
-    for code in candidates:
+    return candidates
+
+
+def emoji_name_for_org(org_code: str) -> str:
+    """Discord-safe name for a new organizer emoji (matches emoji_for_org lookup order)."""
+    for c in _org_emoji_name_candidates(org_code):
+        if c:
+            return c[:32]
+    return ""
+
+
+def emoji_for_org(org_code: str, guild: discord.Guild | None) -> str:
+    if not guild:
+        return ""
+    for code in _org_emoji_name_candidates(org_code):
         e = _find_custom_emoji(guild, code) or _find_custom_emoji(guild, code.lower())
         if e:
             return str(e)
