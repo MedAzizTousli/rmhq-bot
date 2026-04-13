@@ -59,6 +59,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "SCATTER.": "Team MOIRAI",
     "Playing-Ducks": "Team MOIRAI",
     "PlayingDucksᴿᴹ": "Team MOIRAI",
+    "MOIRAI": "Team MOIRAI",
     "Samba Cookers (FEEL THE AURA)": "Samba Cookers",
     "Samba Cooker": "Samba Cookers",
     "√ ᴠᴏʀᴛᴇx": "Vortex",
@@ -82,7 +83,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "хорошие девочки": "ASTRA",
     "princess": "ASTRA",
     "ASTRA eSports": "ASTRA",
-    "FLOW RISING": "EON x FLR",
+    "FLOW RISING": "EON Esports",
     "Origin Iris": "Origin Ascend",
     "Ωrigin Ascend": "Origin Ascend",
     "Right Click": "Z5",
@@ -96,7 +97,13 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Karma": "Beneath Reality",
     "Mist": "DX x MIST",
     "Delusion Esports": "Death Cloud Esports",
-    "Classic X": "Classic V"
+    "Classic X": "Classic V",
+    "Exotic Raccoons": "Anarchy Raccoons",
+    "𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘": "Beneath Reality",
+    "EON x FLR": "EON Esports",
+    "EON": "EON Esports",
+    "ΔX x MIST": "DX x MIST",
+    "VTD": "Virtual Dragons"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -121,7 +128,12 @@ DISBANDED_TEAMS: list[str] = [
     "Seraphim",
     "El Cid Campeonador",
     "Voidborn",
-    "FC ELEPHANT"
+    "FC ELEPHANT",
+    "VALNOX",
+    "Aïd moubarak la team",
+    "1UP",
+    "Bloody V",
+    "PASTEL DE NATA"
 ]
 
 def normalize_name(name: str) -> str:
