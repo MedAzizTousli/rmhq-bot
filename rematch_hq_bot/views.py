@@ -1759,6 +1759,7 @@ def _country_to_flag(raw: str) -> str | None:
         "algeria": "DZ",
         "egypt": "EG",
         "south africa": "ZA",
+        "lebanon": "LB",
     }
     if name in common:
         return _flag_from_iso2(common[name])

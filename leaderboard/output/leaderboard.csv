@@ -1,152 +1,193 @@
 Rank,Team,Points
-1,OVERDOZEE,4927.00
-2,VOLARE,3212.00
-3,wildcats,2528.00
-4,Str1ve eSports,2524.00
-5,Team MOIRAI,2480.00
-6,ASTRA,2185.60
-7,OVERDOZEE CIS,2063.00
-8,Kin,1736.00
-9,Madness,1145.00
-10,MOIRAI,1105.00
-11,Monaco x AY,1095.40
-12,Flow Riders,1065.00
-13,Blind Owls,959.00
-14,Drain Cats,938.60
-15,barsik,834.00
-16,YUREI,761.00
-17,PASTEL DE NATA,669.00
-18,Exotic Raccoons,640.20
-19,ORIGIN,636.60
-20,VEX,587.40
-21,Renascença,485.20
-22,ICE Gaming Group,483.60
-23,Dark Impulse,465.40
-24,Blind Spot,417.80
-25,Better Call Saul,349.00
-26,EON x FLR,340.00
-27,PEKKA,339.60
-28,Focus,313.40
-29,EOZ Ultima,304.00
-30,Classic V,297.60
-31,Z5,297.00
-32,𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘,281.00
-33,Bloody V,268.00
-34,EON,245.00
-35,VTD,245.00
-36,Cold Blooded,243.40
-37,Haze,239.40
-38,Brussels JK,231.80
-39,Karma,228.80
-40,El Cid Campeonador,220.00
-41,Death Cloud Esports,216.00
-42,Reborn Xi,207.60
-43,YOMI eSports,206.40
-44,Anarchy,204.00
-45,HAKI,192.00
-46,Ravens,171.40
-47,Morty's Minions,161.60
-48,X5,158.40
-49,RXM,155.60
-50,InFeriX Esports,151.60
-51,WildCard,148.00
-52,Virtual Dragons,144.00
-53,Fenix,142.20
-54,DX x MIST,141.80
-55,NoLimits eSports,141.80
-56,Midnight,136.00
-57,PRAGMA CLAN,135.00
-58,Savage,123.60
-59,Maledict,113.00
-60,Drain Dogs,109.80
-61,Vortex,105.80
-62,LOS QUE PASHADA,105.60
-63,VALNOX,105.60
-64,Born To Evolve,91.40
-65,La pasion,84.00
-66,Orvex Esport,84.00
-67,Skepsis Esports,84.00
-68,ΣILENT ΚΔᵏᵘʲΔ,84.00
-69,Crybabys,80.00
-70,The Simpson,76.00
-71,Revenants,72.00
-72,ΔX x MIST,72.00
-73,1Motive,70.40
-74,1UP,70.40
-75,Seraphim,70.40
-76,Chill,68.00
-77,Domestic puppies,68.00
-78,PAS V,68.00
-79,PROJECT ZENIN,68.00
-80,Ultras,68.00
-81,Full Send Protocol,64.80
-82,AKI,56.00
-83,la Ñ,56.00
-84,Guardian Owls,45.00
-85,Right Click,45.00
-86,Supremacy,45.00
-87,ZERO,44.80
-88,Les Simpson,43.20
-89,mini PEKKA,39.20
-90,ni rematch ni match,39.20
-91,Team Sniper,39.20
-92,The Espadas,39.20
-93,eclipse refund,35.20
-94,FRAUDES,35.20
-95,L9,35.20
-96,Origin Ascend,35.20
-97,Phantom Prodigies,35.20
-98,Voidborn,35.20
+1,OVERDOZEE,4892.00
+2,VOLARE,3484.00
+3,ASTRA,3045.00
+4,Str1ve eSports,2522.00
+5,KIN,2466.00
+6,wildcats,2153.00
+7,OVERDOZEE CIS,1796.00
+8,Flow Riders,1635.00
+9,Team MOIRAI,1380.00
+10,Drain Cats,1315.00
+11,MOIRAI,1150.00
+12,𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘,1081.00
+13,barsik,1073.00
+14,EON,1073.00
+15,Monaco x AY,1058.00
+16,Blind Owls,1002.00
+17,Exotic Raccoons,699.00
+18,PASTEL DE NATA,669.00
+19,Dark Impulse,580.00
+20,PEKKA,575.00
+21,Yurei,566.00
+22,ORIGIN,543.00
+23,VEX,505.00
+24,Renascença,494.00
+25,Blind Spot,451.00
+26,Focus,436.00
+27,ICE Gaming Group,403.00
+28,Anarchy,376.00
+29,Reborn Xi,361.00
+30,Cold Blooded,359.00
+31,Madness,357.00
+32,Better Call Saul,349.00
+33,NoLimits eSports,344.00
+34,HAKI,335.00
+35,Classic V,290.00
+36,WildCard,288.00
+37,AKI,276.00
+38,ΔX x MIST,276.00
+39,Brussels JK,260.00
+40,VTD,245.00
+41,Death Cloud Esports,233.00
+42,Haze,191.00
+43,NightFall,169.00
+44,FENIX,166.00
+45,YOMI eSports,153.00
+46,Vortex,150.00
+47,Virtual Dragons,144.00
+48,PRAGMA CLAN,139.00
+49,Orvex Esport,138.00
+50,After Hours,136.00
+51,EOZ,136.00
+52,Midnight,136.00
+53,Maledict,125.00
+54,Desert elders,121.00
+55,Drain Dogs,119.00
+56,Z5,117.00
+57,InFeriX Esports,114.00
+58,onryo,109.00
+59,Ravens,109.00
+60,Zero,108.00
+61,RandomCats,100.00
+62,Revenants,97.00
+63,Chill,93.00
+64,La pasion,92.00
+65,The Old Firm,92.00
+66,Supremacy,90.00
+67,Fivefold Demolition,89.00
+68,PAS V,86.00
+69,RXM Esports,86.00
+70,Backstreet Moyes,85.00
+71,EOZ Ultima,85.00
+72,Skepsis Esports,84.00
+73,ΣILENT ΚΔᵏᵘʲΔ,84.00
+74,Crybabys,80.00
+75,Germany,80.00
+76,mini PEKKA,80.00
+77,ΔX x Madness,80.00
+78,DX x MIST,78.00
+79,[FC Sdah] - Équipe A,76.00
+80,EON x FLR,76.00
+81,The Simpson,76.00
+82,Vanta Edge,76.00
+83,Domestic puppies,68.00
+84,PROJECT ZENIN,68.00
+85,Ravens ESP,68.00
+86,SOL Invictus,68.00
+87,Ultras,68.00
+88,X5,67.00
+89,Anarchy Raccoons,61.00
+90,Full Send Protocol,56.00
+91,la Ñ,56.00
+92,Morty's Minions,56.00
+93,RXM,50.00
+94,Project corvus,47.00
+95,Bleu Dragon,45.00
+96,Guardian Owls,45.00
+97,Right Click,45.00
+98,Death Cloud Esport,42.00
 99,anal,35.00
 100,Brussels JK Academy,35.00
 101,EON Esports,35.00
-102,Project corvus,29.00
-103,Anarchy Raccoons,28.00
-104,Desert elders,28.00
-105,Night Owls,28.00
-106,xanax,28.00
-107,FC EBY,25.00
-108,Team Sniper Revive,25.00
-109,Aura,21.00
-110,Fivefold Demolition,21.00
-111,GCC,21.00
-112,onryo,21.00
-113,RAVE,21.00
-114,Aeterna Dragons,18.00
-115,EXOTIC,18.00
-116,RXM Esports,18.00
-117,Backboarders,17.60
-118,Backstreet Moyes,17.00
-119,FXB,17.00
-120,H&H TC,17.00
-121,Mitsune,12.80
-122,YARMA BAŞKAN,12.00
-123,PRIME EM XOS,9.80
-124,Esperion Esports,8.80
-125,Limitless eSports,8.80
-126,Mythical Woods,8.80
-127,NEXT GEN UNITED,8.80
-128,Onyx,8.80
-129,SerapH eSports,8.80
-130,Team Solaris,8.80
-131,Team Villain,8.80
-132,Win Condition,8.80
-133,[FC Sdah] - Équipe A,8.00
-134,TT,8.00
-135,5 randoms,4.00
-136,Death Cloud Esport,4.00
-137,FC Origan,4.00
-138,mini PEKKA-1,4.00
-139,Monarchy Esport,4.00
-140,Corvo,2.00
-141,Blaze Esports,1.00
-142,DeglingOwls,1.00
-143,JustWatch,1.00
-144,Rain-T FC,1.00
-145,Prodigy,0.00
-146,SANGUINE,0.00
-147,SOL Invictus,0.00
-148,The lions,0.00
-149,TydaLStride,0.00
-150,Zitoune FC,0.00
-151,ZXC TEAM,0.00
+102,黄泉 YOMI eSports,35.00
+103,CLUTCH V,30.00
+104,EXOTIC,30.00
+105,Aura,29.00
+106,La Pasión,29.00
+107,Night Owls,28.00
+108,xanax,28.00
+109,FC EBY,25.00
+110,Kill-Streak Monkey,25.00
+111,Phantom Prodigies,25.00
+112,praxis,25.00
+113,Team Sniper Revive,25.00
+114,VOLT Guardian Owls,25.00
+115,Zentrix Esports,25.00
+116,ΛKI,25.00
+117,Born To Evolve,21.00
+118,C.A.A,21.00
+119,GCC,21.00
+120,RAVE,21.00
+121,Aeterna Dragons,18.00
+122,Avocado FC,18.00
+123,Savage,18.00
+124,Saviors,18.00
+125,ZΞRØ,18.00
+126,Casull,17.00
+127,CSHouse,17.00
+128,FXB,17.00
+129,H&H TC,17.00
+130,HELLOKITY,17.00
+131,Prodigy,17.00
+132,Skepsis gaming,17.00
+133,VVA,17.00
+134,∆X x Madness,17.00
+135,1Motive,12.00
+136,Beneath Reality,12.00
+137,HzX,12.00
+138,Ice GG,12.00
+139,JabberWock,12.00
+140,K-ill S-treak Monkeys,12.00
+141,Majin Purple,12.00
+142,ORG NAME [  ],12.00
+143,PackMiko E-sports,12.00
+144,SOLID,12.00
+145,Voidborn,12.00
+146,WE’RE COMMING,12.00
+147,YARMA BAŞKAN,12.00
+148,ΔX ΣILENT ΚΔᵏᵘʲΔ,12.00
+149,Ωrigin x DMD,12.00
+150,Corvo,10.00
+151,Dethrone,8.00
+152,Les Simpson,8.00
+153,ludomaniacs,8.00
+154,Royal Lions,8.00
+155,SOL | Invictus,8.00
+156,TT,8.00
+157,Vorpal sword,8.00
+158,ʏᴏꜱʜɪ,8.00
+159,5 randoms,4.00
+160,African Ducks,4.00
+161,Aurora FC,4.00
+162,Bloody V,4.00
+163,CAA,4.00
+164,CLOUDS,4.00
+165,Dual Esports,4.00
+166,FC Origan,4.00
+167,Feather 5,4.00
+168,FRAUDES,4.00
+169,HÓRUS F.C.,4.00
+170,Ice Dragon,4.00
+171,LOS QUE PASHADA,4.00
+172,mini PEKKA-1,4.00
+173,Mitsune,4.00
+174,Monarchy Esport,4.00
+175,ni rematch ni match,4.00
+176,RΛCCΘΘN HUNTΞRS,4.00
+177,RΞFLEX FC,4.00
+178,SerapH eSports,4.00
+179,Team Sniper,4.00
+180,The Espadas,4.00
+181,THE VOID,4.00
+182,Win Condition,4.00
+183,Blaze Esports,1.00
+184,DeglingOwls,1.00
+185,JustWatch,1.00
+186,PRIME EM XOS,1.00
+187,Rain-T FC,1.00
+188,SANGUINE,0.00
+189,The lions,0.00
+190,TydaLStride,0.00
+191,Zitoune FC,0.00
+192,ZXC TEAM,0.00

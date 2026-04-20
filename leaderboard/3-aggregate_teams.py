@@ -78,7 +78,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
     "Desert elders": "SOLID",
-    "AS Livorno": "MIST",
+    "AS Livorno": "DeltaX MIST",
     "It's showtime...": "ASTRA",
     "хорошие девочки": "ASTRA",
     "princess": "ASTRA",
@@ -95,15 +95,29 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Monaco": "Monaco x AY",
     "YOMI eSports": "黄泉 YOMI eSports",
     "Karma": "Beneath Reality",
-    "Mist": "DX x MIST",
+    "Mist": "DeltaX MIST",
     "Delusion Esports": "Death Cloud Esports",
     "Classic X": "Classic V",
     "Exotic Raccoons": "Anarchy Raccoons",
     "𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘": "Beneath Reality",
     "EON x FLR": "EON Esports",
     "EON": "EON Esports",
-    "ΔX x MIST": "DX x MIST",
-    "VTD": "Virtual Dragons"
+    "ΔX x MIST": "DeltaX MIST",
+    "VTD": "Virtual Dragons",
+    "EOZ": "EOZ Ultima",
+    "Madness": "DeltaX Madness",
+    "∆X x Madness": "DeltaX Madness",
+    "ΔX x Madness": "DeltaX Madness",
+    "RandomCats": "wildcats",
+    "mini PEKKA-1": "mini PEKKA",
+    "DX x MIST": "DeltaX MIST",
+    "Death Cloud Esport": "Death Cloud Esports",
+    "Guardian Owls": "VOLT Guardian Owls",
+    "Ice GG": "Ice Gaming Group",
+    "K-ill S-treak Monkeys": "Kill-Streak Monkey",
+    "La pasion": "La Pasión",
+    "Origin": "Ωrigin x DMD",
+    "Skepsis gaming": "Skepsis Esports"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -121,7 +135,6 @@ DISBANDED_TEAMS: list[str] = [
     "Dual Esports",
     "we need name",
     "SPARTA",
-    "SOLID",
     "1Motive",
     "Origin Ascend",
     "NoLimits eSports",
@@ -133,7 +146,9 @@ DISBANDED_TEAMS: list[str] = [
     "Aïd moubarak la team",
     "1UP",
     "Bloody V",
-    "PASTEL DE NATA"
+    "PASTEL DE NATA",
+    "Better Call Saul",
+    "X5"
 ]
 
 def normalize_name(name: str) -> str:
