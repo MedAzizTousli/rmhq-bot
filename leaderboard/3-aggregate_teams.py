@@ -78,7 +78,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Ωrigin Académie": "Origin Iris",
     "Ωrigin Iris": "Origin Iris",
     "Desert elders": "SOLID",
-    "AS Livorno": "DeltaX MIST",
+    "AS Livorno": "Mist",
     "It's showtime...": "ASTRA",
     "хорошие девочки": "ASTRA",
     "princess": "ASTRA",
@@ -86,8 +86,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "FLOW RISING": "EON Esports",
     "Origin Iris": "Origin Ascend",
     "Ωrigin Ascend": "Origin Ascend",
-    "Right Click": "Z5",
-    "BOMBO": "Z5",
+    "Right Click": "X5",
+    "BOMBO": "X5",
     "Brussels Blue Elites": "Brussels JK",
     "Brussels JK Blue Elites": "Brussels JK",
     "Beneath Reality": "Kin",
@@ -95,14 +95,13 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Monaco": "Monaco x AY",
     "YOMI eSports": "黄泉 YOMI eSports",
     "Karma": "Beneath Reality",
-    "Mist": "DeltaX MIST",
     "Delusion Esports": "Death Cloud Esports",
     "Classic X": "Classic V",
     "Exotic Raccoons": "Anarchy Raccoons",
     "𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘": "Beneath Reality",
     "EON x FLR": "EON Esports",
     "EON": "EON Esports",
-    "ΔX x MIST": "DeltaX MIST",
+    "ΔX x MIST": "Mist",
     "VTD": "Virtual Dragons",
     "EOZ": "EOZ Ultima",
     "Madness": "DeltaX Madness",
@@ -110,14 +109,20 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ΔX x Madness": "DeltaX Madness",
     "RandomCats": "wildcats",
     "mini PEKKA-1": "mini PEKKA",
-    "DX x MIST": "DeltaX MIST",
+    "DX x MIST": "Mist",
     "Death Cloud Esport": "Death Cloud Esports",
     "Guardian Owls": "VOLT Guardian Owls",
     "Ice GG": "Ice Gaming Group",
     "K-ill S-treak Monkeys": "Kill-Streak Monkey",
     "La pasion": "La Pasión",
-    "Origin": "Ωrigin x DMD",
-    "Skepsis gaming": "Skepsis Esports"
+    "Origin": "Origin x DMD",
+    "Skepsis gaming": "Skepsis Esports",
+    "Maledict": "ACE",
+    "Z5": "X5",
+    "Blind Spot": "Zentrix Esports",
+    "very secret team": "Drain Cats",
+    "Ωrigin x DMD": "Origin x DMD",
+    "ᴍᴏɴᴀᴄᴏ x Aᵧ LAST DANCE": "Monaco x AY"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -148,7 +153,7 @@ DISBANDED_TEAMS: list[str] = [
     "Bloody V",
     "PASTEL DE NATA",
     "Better Call Saul",
-    "X5"
+    "Monaco x AY"
 ]
 
 def normalize_name(name: str) -> str:

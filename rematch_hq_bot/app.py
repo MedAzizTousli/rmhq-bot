@@ -125,7 +125,6 @@ async def setup(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Rematch HQ Setup",
         description=(
-            "🗑️ **Purge Scrims:** Delete all posts in the scrims forum.\n"
             "💖 **Compliment:** Tag someone to post a compliment.\n"
             "📅 **Tournament Today:** Post today's tournaments.\n"
             "🏆 **Tournament Results:** Post the results of a tournament.\n"

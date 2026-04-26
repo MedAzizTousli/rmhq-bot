@@ -3387,7 +3387,6 @@ class SetupView(discord.ui.View):
         original_items = list(self.children)
         by_custom_id = {item.custom_id: item for item in original_items}
         ordered_first_row_ids = [
-            "rematchhq:purge_scrims",
             "rematchhq:compliment",
             "rematchhq:tournament_today",
         ]
@@ -4144,45 +4143,6 @@ class SetupView(discord.ui.View):
                 preview_message_ids=preview_message_ids,
                 reroll_fn=_reroll,
                 publish_fn=_publish,
-            ),
-        )
-
-    @discord.ui.button(
-        label="🗑️ Purge Scrims",
-        style=discord.ButtonStyle.primary,
-        custom_id="rematchhq:purge_scrims",
-        row=0,
-    )
-    async def purge_scrims(self, interaction: discord.Interaction, _: discord.ui.Button):
-        if not interaction.guild or not interaction.channel:
-            await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
-            server = config.server_for_guild_id(interaction.guild.id)
-            required = server.setup_channel_id if server else None
-            if required is not None:
-                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
-                return
-
-        server = config.server_for_guild_id(interaction.guild.id)
-        forum_id = server.scrim_forum_channel_id if server else None
-        exclude_uid = server.scrim_forum_user_id_exclude if server else None
-        if not forum_id:
-            await interaction.response.send_message(
-                "Missing `SCRIM_FORUM_CHANNEL_ID` in `config.yaml` for this server.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.send_message(
-            "You're about to delete **all posts** in the configured scrims forum.\n\n"
-            "Press **Confirm purge** to proceed.",
-            ephemeral=True,
-            view=ForumPurgeConfirmView(
-                requester_id=interaction.user.id,
-                forum_channel_id=int(forum_id),
-                exclude_user_id=(int(exclude_uid) if exclude_uid else None),
             ),
         )
 
