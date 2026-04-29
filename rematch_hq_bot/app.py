@@ -130,6 +130,7 @@ async def setup(interaction: discord.Interaction):
             "🏆 **Tournament Results:** Post the results of a tournament.\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
+            "💶 **Earnings:** Calculate prize earnings from Notion.\n"
             "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
             "📈 **Calculate Predictions:** Show the top predictors for a given month.\n"
             "✌️ **Calculate GGs:** Monthly GG message leaderboard (Hall of Fame)."

@@ -34,9 +34,10 @@ SYNC_COMMANDS_ON_STARTUP = os.getenv("SYNC_COMMANDS_ON_STARTUP", "1").strip().lo
     "no",
 }
 
-# Notion (optional, required for "Today's tournaments" button)
+# Notion (optional, required for "Today's tournaments" / "Earnings" buttons)
 NOTION_TOKEN = os.getenv("NOTION_TOKEN", "").strip()
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "").strip()
+PRIZE_POOL_NOTION_DATABASE_ID = os.getenv("PRIZE_POOL_NOTION_DATABASE_ID", "").strip()
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,9 @@ class ServerConfig:
     upcoming_tournaments_channel_id: int | None = None
     leaderboard_channel_id: int | dict[str, int] | None = None
     rosters_channel_id: int | None = None
+    earnings_channel_id: int | None = None
+    supreme_earner_role_id: int | None = None
+    top_earner_role_id: int | None = None
     scrim_forum_channel_id: int | None = None
     scrim_forum_user_id_exclude: int | None = None
 
@@ -178,6 +182,9 @@ def _load_servers() -> dict[int, ServerConfig]:
                 upcoming_tournaments_channel_id=_as_int(block.get("UPCOMING_TOURNAMENTS_CHANNEL_ID")),
                 leaderboard_channel_id=_parse_int_or_map_int(block.get("LEADERBOARD_CHANNEL_ID")),
                 rosters_channel_id=_as_int(block.get("ROSTERS_CHANNEL_ID")),
+                earnings_channel_id=_as_int(block.get("EARNINGS_CHANNEL_ID")),
+                supreme_earner_role_id=_as_int(block.get("SUPREME_EARNER_ROLE_ID")),
+                top_earner_role_id=_as_int(block.get("TOP_EARNER_ROLE_ID")),
                 scrim_forum_channel_id=_as_int(block.get("SCRIM_FORUM_CHANNEL_ID")),
                 scrim_forum_user_id_exclude=_as_int(block.get("SCRIM_FORUM_USER_ID_EXCLUDE")),
                 tournaments_ping_id=_as_int(block.get("TOURNAMENTS_PING_ID")),

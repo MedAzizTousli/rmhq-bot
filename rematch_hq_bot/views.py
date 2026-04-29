@@ -43,8 +43,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LEADERBOARD_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_aggregated.csv"
 _PART_LEADERBOARD_PRT_DIR = _REPO_ROOT / "leaderboard" / "csv_prt"
 _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
+_PLAYER_EARNINGS_YAML = _REPO_ROOT / "leaderboard" / "output" / "player_earnings.yaml"
+_PLAYER_EARNINGS_CSV = _REPO_ROOT / "leaderboard" / "output" / "player_earnings.csv"
+_TEAM_EARNINGS_CSV = _REPO_ROOT / "leaderboard" / "output" / "team_earnings.csv"
 _PREDICTIONS_CSV = _REPO_ROOT / "leaderboard" / "output" / "predictions.csv"
 _PREDICTION_FIELDNAMES = ("poll_date", "message_id", "question", "winning_answer", "all_people", "right_people")
+_PRIZE_POOL_PLACEMENTS = ("1st", "2nd", "3rd", "4th")
+_USD_TO_EUR = 0.85
 
 _RULEBOOK_URL = "https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
@@ -244,6 +249,362 @@ def _leaderboard_channel_id(
     if isinstance(value, dict) and tournament_type:
         return value.get(tournament_type.strip().upper())
     return None
+
+
+def _notion_property(page: dict, name: str) -> dict:
+    props = page.get("properties") or {}
+    if not isinstance(props, dict):
+        return {}
+    if name in props and isinstance(props[name], dict):
+        return props[name]
+    wanted = name.casefold()
+    for prop_name, prop in props.items():
+        if str(prop_name).casefold() == wanted and isinstance(prop, dict):
+            return prop
+    return {}
+
+
+def _notion_plain_text(prop: dict) -> str:
+    prop_type = prop.get("type")
+    if prop_type in {"title", "rich_text"}:
+        chunks = prop.get(prop_type) or []
+        if isinstance(chunks, list):
+            return "".join(str(c.get("plain_text") or "") for c in chunks if isinstance(c, dict)).strip()
+    if prop_type == "select":
+        select = prop.get("select")
+        return str((select or {}).get("name") or "").strip() if isinstance(select, dict) else ""
+    if prop_type == "number":
+        value = prop.get("number")
+        return "" if value is None else str(value).strip()
+    if prop_type == "formula":
+        formula = prop.get("formula") or {}
+        if isinstance(formula, dict):
+            formula_type = formula.get("type")
+            value = formula.get(formula_type) if formula_type else None
+            return "" if value is None else str(value).strip()
+    return ""
+
+
+def _notion_select_name(prop: dict) -> str:
+    select = prop.get("select") or {}
+    return str(select.get("name") or "").strip() if isinstance(select, dict) else ""
+
+
+def _notion_multi_select_names(prop: dict) -> list[str]:
+    items = prop.get("multi_select") or []
+    if not isinstance(items, list):
+        return []
+    names: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def _parse_prize_to_eur(raw: str) -> float | None:
+    text = " ".join((raw or "").strip().split())
+    if not text:
+        return None
+
+    amount_match = re.search(r"\d+(?:[.,]\d+)?", text)
+    if not amount_match:
+        return None
+
+    try:
+        amount = float(amount_match.group(0).replace(",", "."))
+    except ValueError:
+        return None
+
+    if "$" in text:
+        amount *= _USD_TO_EUR
+    return round(amount, 2)
+
+
+def _format_eur(amount: float) -> str:
+    rounded = round(float(amount), 2)
+    if rounded.is_integer():
+        return f"€{int(rounded)}"
+    return f"€{rounded:.2f}"
+
+
+def _write_earnings_csv(path: Path, name_column: str, rows: list[tuple[str, float]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=[name_column, "earnings"])
+        writer.writeheader()
+        for name, amount in rows:
+            writer.writerow({name_column: name, "earnings": f"{amount:.2f}"})
+
+
+def _load_player_earnings_user_ids() -> dict[str, int]:
+    if not _PLAYER_EARNINGS_YAML.exists():
+        return {}
+
+    with _PLAYER_EARNINGS_YAML.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        return {}
+
+    user_ids: dict[str, int] = {}
+    for name, raw_value in raw.items():
+        key = " ".join(str(name or "").split()).casefold()
+        if not key:
+            continue
+        raw_id = raw_value.get("id") if isinstance(raw_value, dict) else raw_value
+        uid = _extract_user_id(str(raw_id or ""))
+        if uid:
+            user_ids[key] = int(uid)
+    return user_ids
+
+
+def _load_player_earnings_display_names() -> dict[str, str]:
+    if not _PLAYER_EARNINGS_YAML.exists():
+        return {}
+
+    with _PLAYER_EARNINGS_YAML.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        return {}
+
+    display_names: dict[str, str] = {}
+    for name, raw_value in raw.items():
+        player_name = " ".join(str(name or "").split())
+        key = player_name.casefold()
+        if not key:
+            continue
+
+        raw_id = raw_value.get("id") if isinstance(raw_value, dict) else raw_value
+        uid = _extract_user_id(str(raw_id or ""))
+        rendered = f"<@{uid}>" if uid else player_name
+
+        if isinstance(raw_value, dict):
+            flag = _country_to_flag(str(raw_value.get("country") or ""))
+            if flag:
+                rendered = f"{flag} {rendered}"
+
+        display_names[key] = rendered
+    return display_names
+
+
+def _load_player_earnings_flags() -> dict[str, str]:
+    if not _PLAYER_EARNINGS_YAML.exists():
+        return {}
+
+    with _PLAYER_EARNINGS_YAML.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        return {}
+
+    flags: dict[str, str] = {}
+    for name, raw_value in raw.items():
+        key = " ".join(str(name or "").split()).casefold()
+        if not key or not isinstance(raw_value, dict):
+            continue
+        flag = _country_to_flag(str(raw_value.get("country") or ""))
+        if flag:
+            flags[key] = flag
+    return flags
+
+
+async def _sync_earnings_roles(
+    guild: discord.Guild,
+    *,
+    player_rows: list[tuple[str, float]],
+    player_user_ids: dict[str, int],
+    top_earner_role_id: int | None,
+    supreme_earner_role_id: int | None,
+    actor: discord.User | discord.Member,
+) -> str:
+    top_role = guild.get_role(int(top_earner_role_id)) if top_earner_role_id else None
+    supreme_role = guild.get_role(int(supreme_earner_role_id)) if supreme_earner_role_id else None
+    if top_role is None and supreme_role is None:
+        return "Earner roles skipped: role IDs are missing or roles were not found."
+
+    desired_top_ids: set[int] = set()
+    missing_yaml: list[str] = []
+    for player, _amount in player_rows[:10]:
+        uid = player_user_ids.get(" ".join(player.split()).casefold())
+        if uid is None:
+            missing_yaml.append(player)
+            continue
+        desired_top_ids.add(uid)
+
+    desired_supreme_ids: set[int] = set()
+    if player_rows:
+        top_player = player_rows[0][0]
+        uid = player_user_ids.get(" ".join(top_player.split()).casefold())
+        if uid is not None:
+            desired_supreme_ids.add(uid)
+        elif top_player not in missing_yaml:
+            missing_yaml.append(top_player)
+
+    added = 0
+    already_had = 0
+    removed = 0
+    missing_members = 0
+    failures = 0
+    member_cache: dict[int, discord.Member] = {}
+
+    async def _member_for(uid: int) -> discord.Member | None:
+        cached = member_cache.get(uid)
+        if cached is not None:
+            return cached
+        member = guild.get_member(uid)
+        if member is None:
+            try:
+                member = await guild.fetch_member(uid)
+            except discord.NotFound:
+                return None
+            except discord.DiscordException:
+                return None
+        member_cache[uid] = member
+        return member
+
+    async def _add_role(uid: int, role: discord.Role | None) -> None:
+        nonlocal added, already_had, missing_members, failures
+        if role is None:
+            return
+        member = await _member_for(uid)
+        if member is None:
+            missing_members += 1
+            return
+        if role in getattr(member, "roles", []):
+            already_had += 1
+            return
+        try:
+            await member.add_roles(
+                role,
+                reason=f"Earnings roles synced by {actor} ({actor.id})",
+            )
+            added += 1
+        except (discord.Forbidden, discord.HTTPException):
+            failures += 1
+
+    async def _remove_stale(role: discord.Role | None, desired_ids: set[int]) -> None:
+        nonlocal removed, failures
+        if role is None:
+            return
+        for member in list(role.members):
+            if member.id in desired_ids:
+                continue
+            try:
+                await member.remove_roles(
+                    role,
+                    reason=f"Earnings roles synced by {actor} ({actor.id})",
+                )
+                removed += 1
+            except (discord.Forbidden, discord.HTTPException):
+                failures += 1
+
+    for uid in sorted(desired_top_ids):
+        await _add_role(uid, top_role)
+    for uid in sorted(desired_supreme_ids):
+        await _add_role(uid, supreme_role)
+    await _remove_stale(top_role, desired_top_ids)
+    await _remove_stale(supreme_role, desired_supreme_ids)
+
+    parts = [
+        f"Earner roles: **{added}** added, **{already_had}** already had, **{removed}** removed.",
+        f"Missing members: **{missing_members}**. Failures: **{failures}**.",
+    ]
+    if missing_yaml:
+        names = ", ".join(missing_yaml[:5])
+        suffix = "…" if len(missing_yaml) > 5 else ""
+        parts.append(f"Missing player IDs in `{_PLAYER_EARNINGS_YAML.relative_to(_REPO_ROOT)}`: {names}{suffix}.")
+    return "\n".join(parts)
+
+
+def _generate_earnings_from_notion_pages(pages: list[dict]) -> tuple[list[tuple[str, float]], list[tuple[str, float]], int]:
+    player_totals: dict[str, float] = {}
+    team_totals: dict[str, float] = {}
+    tournaments_count = 0
+
+    for page in pages:
+        page_had_prize = False
+        for placement in _PRIZE_POOL_PLACEMENTS:
+            prize = _parse_prize_to_eur(_notion_plain_text(_notion_property(page, f"{placement} prize")))
+            if prize is None:
+                continue
+
+            team = _notion_select_name(_notion_property(page, f"{placement} team"))
+            if team:
+                team_totals[team] = team_totals.get(team, 0.0) + prize
+                page_had_prize = True
+
+            roster = _notion_multi_select_names(_notion_property(page, f"{placement} roster"))
+            if roster:
+                per_player = prize / len(roster)
+                for player in roster:
+                    player_totals[player] = player_totals.get(player, 0.0) + per_player
+                page_had_prize = True
+
+        if page_had_prize:
+            tournaments_count += 1
+
+    player_rows = sorted(
+        ((name, round(amount, 2)) for name, amount in player_totals.items()),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )
+    team_rows = sorted(
+        ((name, round(amount, 2)) for name, amount in team_totals.items()),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )
+    return player_rows, team_rows, tournaments_count
+
+
+def _earnings_rank_label(rank: int) -> str:
+    if rank == 1:
+        return "🥇"
+    if rank == 2:
+        return "🥈"
+    if rank == 3:
+        return "🥉"
+    return str(rank)
+
+
+def _build_earnings_embed(
+    *,
+    title: str,
+    name_field: str,
+    rows: list[tuple[str, float]],
+    guild: discord.Guild | None = None,
+    player_display_names: dict[str, str] | None = None,
+) -> discord.Embed:
+    embed = discord.Embed(title=title, color=0xBE629B)
+    top = rows[:10]
+    if not top:
+        embed.description = "No earnings found."
+        return embed
+
+    ranks: list[str] = []
+    names: list[str] = []
+    earnings: list[str] = []
+    for idx, (name, amount) in enumerate(top):
+        rank = idx + 1
+        rendered_name = name
+        if name_field == "Player" and player_display_names:
+            rendered_name = player_display_names.get(" ".join(name.split()).casefold(), name)
+        elif name_field == "Team":
+            team_emoji = emoji_for(name, guild)
+            if team_emoji:
+                rendered_name = f"{team_emoji} {name}"
+
+        rendered_amount = _format_eur(amount)
+        if idx < 3:
+            rendered_name = f"**{rendered_name}**"
+            rendered_amount = f"**{rendered_amount}**"
+        ranks.append(_earnings_rank_label(rank))
+        names.append(rendered_name)
+        earnings.append(rendered_amount)
+
+    embed.add_field(name="Rank", value="\n".join(ranks), inline=True)
+    embed.add_field(name=name_field, value="\n".join(names), inline=True)
+    embed.add_field(name="Earnings", value="\n".join(earnings), inline=True)
+    embed.set_footer(text="Prize values converted to euros. Conversion rate: $1 = €0.85.")
+    return embed
 
 
 def _build_prediction_results_embed(
@@ -3974,6 +4335,200 @@ class SetupView(discord.ui.View):
 
         await interaction.followup.send(
             f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{rosters_channel_id}>.",
+            ephemeral=True,
+            view=ConfirmPostView(
+                requester_id=interaction.user.id,
+                test_channel_id=int(test_channel_id),
+                preview_message_ids=[preview_msg.id],
+                publish_fn=_publish,
+            ),
+        )
+
+    @discord.ui.button(
+        label="💰 Earnings",
+        style=discord.ButtonStyle.green,
+        custom_id="rematchhq:earnings",
+        row=2,
+    )
+    async def earnings(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.NotFound:
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.followup.send(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not config.NOTION_TOKEN or not config.PRIZE_POOL_NOTION_DATABASE_ID:
+            await interaction.followup.send(
+                "Missing `NOTION_TOKEN` or `PRIZE_POOL_NOTION_DATABASE_ID` in `.env`.",
+                ephemeral=True,
+            )
+            return
+
+        server = config.server_for_guild_id(interaction.guild.id)
+        if server is None:
+            await interaction.followup.send(
+                "This server is not configured in `config.yaml` (missing matching `SERVER_ID`).",
+                ephemeral=True,
+            )
+            return
+
+        earnings_channel_id = server.earnings_channel_id
+        if not earnings_channel_id:
+            await interaction.followup.send(
+                "This server is missing `EARNINGS_CHANNEL_ID` in `config.yaml`.",
+                ephemeral=True,
+            )
+            return
+
+        test_channel_id = server.test_channel_id
+        if not test_channel_id:
+            await interaction.followup.send(
+                "This server is missing `TEST_CHANNEL_ID` in `config.yaml` (needed for previews).",
+                ephemeral=True,
+            )
+            return
+
+        test_channel = await _get_sendable_channel(interaction.guild, int(test_channel_id))
+        if test_channel is None:
+            await interaction.followup.send("Couldn't find the test channel.", ephemeral=True)
+            return
+
+        print("Notion: querying prize pool database for earnings...")
+        try:
+            client = NotionClient(config.NOTION_TOKEN)
+            pages = await client.query_database(config.PRIZE_POOL_NOTION_DATABASE_ID, {"page_size": 100})
+        except httpx.ReadTimeout:
+            print("Notion earnings: ReadTimeout while querying database.")
+            await interaction.followup.send(
+                "Notion timed out while fetching earnings. Try again in a bit.",
+                ephemeral=True,
+            )
+            return
+        except httpx.HTTPStatusError as e:
+            print("Notion earnings: HTTP error:", e.response.status_code, e.response.text[:500])
+            await interaction.followup.send(
+                f"Notion API error ({e.response.status_code}). Check `NOTION_TOKEN` and `PRIZE_POOL_NOTION_DATABASE_ID`.",
+                ephemeral=True,
+            )
+            return
+        except Exception as e:
+            print("Notion earnings: unexpected error:", repr(e))
+            await interaction.followup.send("Notion error while calculating earnings. Check terminal logs.", ephemeral=True)
+            return
+
+        player_rows, team_rows, tournaments_count = _generate_earnings_from_notion_pages(pages)
+        if not player_rows and not team_rows:
+            await interaction.followup.send("No earnings found in the Notion prize pool database.", ephemeral=True)
+            return
+
+        _write_earnings_csv(_PLAYER_EARNINGS_CSV, "player", player_rows)
+        _write_earnings_csv(_TEAM_EARNINGS_CSV, "team", team_rows)
+        player_user_ids = _load_player_earnings_user_ids()
+        player_display_names = _load_player_earnings_display_names()
+        player_flags = _load_player_earnings_flags()
+
+        embeds = [
+            _build_earnings_embed(
+                title="All-Time Highest Earning Players",
+                name_field="Player",
+                rows=player_rows,
+                guild=interaction.guild,
+                player_display_names=player_display_names,
+            ),
+            _build_earnings_embed(
+                title="All-Time Highest Earning Teams",
+                name_field="Team",
+                rows=team_rows,
+                guild=interaction.guild,
+            ),
+        ]
+        ping = _leaderboard_ping(interaction.guild, server.tournaments_ping_id)
+
+        try:
+            preview_msg = await test_channel.send(
+                content=f"[PREVIEW] Earnings\n{ping or ''}".strip(),
+                embeds=embeds,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            )
+        except discord.Forbidden:
+            await interaction.followup.send("I don't have permission to post in the test channel.", ephemeral=True)
+            return
+
+        async def _publish(confirm_interaction: discord.Interaction) -> str:
+            guild = confirm_interaction.guild
+            if guild is None:
+                return "Run this in the server."
+            dest = await _get_sendable_channel(guild, int(earnings_channel_id))
+            if dest is None:
+                return "Couldn't find the earnings channel."
+            try:
+                msg = await dest.send(
+                    content=ping,
+                    embeds=embeds,
+                    allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+                )
+            except discord.Forbidden:
+                return "I don't have permission to post in the earnings channel."
+
+            reactions: list[discord.Emoji | str] = []
+            for emoji_name in ("Top_Earner", "Supreme_Earner"):
+                emoji = _find_custom_emoji(guild, emoji_name)
+                if emoji is not None:
+                    reactions.append(emoji)
+            for team_name, _amount in team_rows[:3]:
+                team_emoji = (
+                    _find_custom_emoji(guild, emoji_name_for_team(team_name))
+                    or _find_custom_emoji(guild, emoji_name_for_team(team_name).lower())
+                )
+                if team_emoji is not None:
+                    reactions.append(team_emoji)
+            for player_name, _amount in player_rows[:3]:
+                flag = player_flags.get(" ".join(player_name.split()).casefold())
+                if flag:
+                    reactions.append(flag)
+
+            seen_reactions: set[str] = set()
+            for emoji in reactions:
+                key = str(emoji)
+                if key in seen_reactions:
+                    continue
+                seen_reactions.add(key)
+                try:
+                    await msg.add_reaction(emoji)
+                except discord.DiscordException:
+                    pass
+            roles_summary = await _sync_earnings_roles(
+                guild,
+                player_rows=player_rows,
+                player_user_ids=player_user_ids,
+                top_earner_role_id=server.top_earner_role_id,
+                supreme_earner_role_id=server.supreme_earner_role_id,
+                actor=confirm_interaction.user,
+            )
+            return (
+                f"Posted earnings in <#{int(earnings_channel_id)}>.\n"
+                f"Wrote `{_PLAYER_EARNINGS_CSV.relative_to(_REPO_ROOT)}` and "
+                f"`{_TEAM_EARNINGS_CSV.relative_to(_REPO_ROOT)}`.\n"
+                f"{roles_summary}"
+            )
+
+        await interaction.followup.send(
+            (
+                f"Calculated earnings from {tournaments_count} tournament(s).\n"
+                f"Wrote `{_PLAYER_EARNINGS_CSV.relative_to(_REPO_ROOT)}` and "
+                f"`{_TEAM_EARNINGS_CSV.relative_to(_REPO_ROOT)}`.\n"
+                f"Preview posted in <#{int(test_channel_id)}>. Confirm to post in <#{int(earnings_channel_id)}>."
+            ),
             ephemeral=True,
             view=ConfirmPostView(
                 requester_id=interaction.user.id,

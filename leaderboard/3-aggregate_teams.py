@@ -122,7 +122,10 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Blind Spot": "Zentrix Esports",
     "very secret team": "Drain Cats",
     "Ωrigin x DMD": "Origin x DMD",
-    "ᴍᴏɴᴀᴄᴏ x Aᵧ LAST DANCE": "Monaco x AY"
+    "ᴍᴏɴᴀᴄᴏ x Aᵧ LAST DANCE": "Monaco x AY",
+    "DSQ": "DSQ Esports",
+    "VEX": "DSQ Esports",
+    "Abaraka Never": "After Hours"
 }
 
 DISBANDED_TEAMS: list[str] = [
