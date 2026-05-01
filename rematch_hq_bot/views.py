@@ -42,6 +42,7 @@ _FIRST_INT_RE = re.compile(r"\d+")
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LEADERBOARD_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_aggregated.csv"
+_LEADERBOARD_PREVIOUS_CSV = _REPO_ROOT / "leaderboard" / "output" / "leaderboard_previous.csv"
 _PART_LEADERBOARD_PRT_DIR = _REPO_ROOT / "leaderboard" / "csv_prt"
 _ROSTERS_YAML = _REPO_ROOT / "leaderboard" / "output" / "rosters.yaml"
 _PLAYER_EARNINGS_YAML = _REPO_ROOT / "leaderboard" / "output" / "player_earnings.yaml"
@@ -1631,7 +1632,12 @@ def _parse_sponsor_line(line: str) -> tuple[str, str, str, str] | tuple[None, st
     return team, flag, mention, amount_display
 
 
-def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None = None) -> discord.Embed:
+def _format_leaderboard_embed(
+    rows: list[dict[str, str]],
+    date_range: str | None = None,
+    *,
+    movement_by_team: dict[str, str] | None = None,
+) -> discord.Embed:
     """
     Build an embed with 3 columns:
       Placement | Team | Points
@@ -1675,14 +1681,10 @@ def _format_leaderboard_embed(rows: list[dict[str, str]], date_range: str | None
         if len(team) > max_team:
             team = team[: max_team - 1] + "…"
 
-        # Replace 1/2/3 with medal emojis in the Placement column (but keep tie ranges like "1-2").
         pl = placement_labels[idx]
-        if pl == "1":
-            pl = "🥇"
-        elif pl == "2":
-            pl = "🥈"
-        elif pl == "3":
-            pl = "🥉"
+        movement = (movement_by_team or {}).get(_canonical_team_name(r.get("Team") or ""))
+        if movement:
+            pl = f"{pl} {movement}"
         pts_str = str(to_points_int(r.get("Points", "")))
 
         # Make top 3 teams + points bold (Discord markdown).
@@ -1725,6 +1727,42 @@ def _parse_rank_number(value: str) -> int | None:
         return int(m.group(0))
     except ValueError:
         return None
+
+
+def _load_previous_leaderboard_ranks() -> dict[str, int]:
+    if not _LEADERBOARD_PREVIOUS_CSV.exists():
+        return {}
+
+    ranks: dict[str, int] = {}
+    with _LEADERBOARD_PREVIOUS_CSV.open("r", newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            return ranks
+        for row in reader:
+            team_key = _canonical_team_name(row.get("Team") or "")
+            rank = _parse_rank_number(row.get("Rank") or "")
+            if team_key and rank is not None:
+                ranks[team_key] = rank
+    return ranks
+
+
+def _leaderboard_movement_by_team(rows: list[dict[str, str]]) -> dict[str, str]:
+    previous_ranks = _load_previous_leaderboard_ranks()
+    if not previous_ranks:
+        return {}
+
+    movement: dict[str, str] = {}
+    for row in rows:
+        team_key = _canonical_team_name(row.get("Team") or "")
+        current_rank = _parse_rank_number(row.get("Rank") or "")
+        previous_rank = previous_ranks.get(team_key)
+        if not team_key or current_rank is None or previous_rank is None:
+            continue
+        if current_rank < previous_rank:
+            movement[team_key] = "<:UP:1499799070443569152>"
+        elif current_rank > previous_rank:
+            movement[team_key] = "<:DOWN:1499799100881895584>"
+    return movement
 
 
 def _points_for_rank(rank: int) -> int:
@@ -3609,8 +3647,12 @@ class LeaderboardModal(discord.ui.Modal):
             except ValueError:
                 return 0
 
-        top = sorted(rows, key=lambda r: (-_points_key(r), (r.get("Team") or "").casefold()))[:48]
-        embed = _format_leaderboard_embed(top, date_range=date_range)
+        top = sorted(rows, key=lambda r: (-_points_key(r), (r.get("Team") or "").casefold()))[:30]
+        embed = _format_leaderboard_embed(
+            top,
+            date_range=date_range,
+            movement_by_team=_leaderboard_movement_by_team(top),
+        )
 
         server = config.server_for_guild_id(interaction.guild.id)
         if server is None:
@@ -3690,7 +3732,7 @@ class PartLeaderboardModal(discord.ui.Modal):
             await interaction.followup.send("No valid teams found in the PART leaderboard CSVs.", ephemeral=True)
             return
 
-        top = sorted(rows, key=lambda r: (-int(r.get("Points", "0") or "0"), (r.get("Team") or "").casefold()))[:48]
+        top = sorted(rows, key=lambda r: (-int(r.get("Points", "0") or "0"), (r.get("Team") or "").casefold()))[:30]
         embed = _format_leaderboard_embed(top, date_range=date_range)
 
         leaderboard_channel_id = _leaderboard_channel_id(server, tournament_type=ttype)

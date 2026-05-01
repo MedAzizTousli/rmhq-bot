@@ -238,7 +238,7 @@ async def setup(interaction: discord.Interaction):
             "💖 **Compliment:** Tag someone to post a compliment.\n"
             "📅 **Tournament Today:** Post today's tournaments.\n\n"
             "🏆 **Tournament Results:** Post the results of a tournament.\n\n"
-            "📊 **Leaderboard:** Post the current leaderboard (top 48).\n"
+            "📊 **Leaderboard:** Post the current leaderboard (top 30).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
             "💶 **Earnings:** Calculate prize earnings from Notion.\n\n"
             "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
