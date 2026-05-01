@@ -616,7 +616,7 @@ def _build_prediction_results_embed(
 ) -> discord.Embed:
     label = _prediction_month_label(year, month)
     embed = discord.Embed(
-        title=f"🔮 Predictor of the Month | {label}",
+        title=f"<:Predictor_Of_The_Month:1488987069744283740> Predictor of the Month | {label}",
         color=0xBE629B,
     )
 
@@ -674,7 +674,7 @@ def _build_gg_class_embed(
         embed.set_footer(text=f"{total_messages} message(s) scanned · {label}")
         return embed
 
-    top = ranked[:25]
+    top = ranked[:10]
     user_lines = [f"<@{uid}>" for uid, _ in top]
     counter_lines = [str(c) for _, c in top]
     embed.add_field(name="User", value="\n".join(user_lines), inline=True)
