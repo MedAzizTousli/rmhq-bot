@@ -10,7 +10,8 @@ dependencies = [
     "python-dotenv",
     "httpx",
     "PyYAML",
-    "Pillow"
+    "Pillow",
+    "asyncpg"
 ]
 
 [tool.vercel.scripts]

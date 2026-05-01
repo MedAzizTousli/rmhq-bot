@@ -3,6 +3,7 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 import random
+import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -10,7 +11,7 @@ import discord
 import httpx
 import yaml
 
-from . import config
+from . import config, emergency_subs
 from .team_emojis import (
     emoji_for,
     emoji_for_org,
@@ -3742,6 +3743,738 @@ class LeaderboardTypeView(discord.ui.View):
         self.add_item(LeaderboardTypeSelect(options=options))
 
 
+_EMERGENCY_ROLE_LABELS: dict[str, str] = {
+    "goalkeeper": "Goalkeeper",
+    "last_man": "Last Man",
+    "second_defender": "Second Defender",
+    "second_striker": "Second Striker",
+    "main_striker": "Main Striker",
+}
+
+_EMERGENCY_ROLE_EMOJIS: dict[str, str] = {
+    "goalkeeper": "🧤",
+    "last_man": "🛡️",
+    "second_defender": "🧠",
+    "second_striker": "🤝",
+    "main_striker": "🎯",
+}
+
+_EMERGENCY_SUB_ROLE_KEYS: dict[str, str] = {
+    role: f"sub_{role}" for role in _EMERGENCY_ROLE_LABELS
+}
+_EMERGENCY_LF_SUB_ROLE_KEYS: dict[str, str] = {
+    role: f"lf_sub_{role}" for role in _EMERGENCY_ROLE_LABELS
+}
+
+_EMERGENCY_ROLE_PLURALS: dict[str, str] = {
+    "goalkeeper": "Goalkeepers",
+    "last_man": "Last Men",
+    "second_defender": "Second Defenders",
+    "second_striker": "Second Strikers",
+    "main_striker": "Main Strikers",
+}
+
+_EMERGENCY_COOLDOWNS: dict[tuple[int, str], float] = {}
+_EMERGENCY_COOLDOWN_SECONDS = 10.0
+
+
+def _emergency_role_label(role: str) -> str:
+    label = _EMERGENCY_ROLE_LABELS.get(role, role)
+    emoji = _EMERGENCY_ROLE_EMOJIS.get(role)
+    return f"{emoji} {label}" if emoji else label
+
+
+def _check_emergency_cooldown(user_id: int, action: str) -> bool:
+    now = time.monotonic()
+    key = (int(user_id), action)
+    until = _EMERGENCY_COOLDOWNS.get(key, 0.0)
+    if until > now:
+        return False
+    _EMERGENCY_COOLDOWNS[key] = now + _EMERGENCY_COOLDOWN_SECONDS
+    return True
+
+
+def _emergency_role_options(*, selected_roles: set[str] | None = None) -> list[discord.SelectOption]:
+    selected_roles = selected_roles or set()
+    return [
+        discord.SelectOption(
+            label=_emergency_role_label(role),
+            value=role,
+            default=role in selected_roles,
+        )
+        for role in _EMERGENCY_ROLE_LABELS
+    ]
+
+
+def _format_emergency_roles(roles: list[str]) -> str:
+    if not roles:
+        return "none"
+    return ", ".join(_emergency_role_label(role) for role in roles)
+
+
+def _format_available_sub_lines(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return ""
+
+    lines: list[str] = []
+    omitted = 0
+    for row in rows:
+        line = f"<@{row['user_id']}>"
+        next_text = "\n".join([*lines, line])
+        if len(next_text) > 1850:
+            omitted += 1
+            continue
+        lines.append(line)
+
+    if omitted:
+        lines.append(f"...and {omitted} more.")
+    return "\n".join(lines)
+
+
+def _format_team_request_lines(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return ""
+
+    lines: list[str] = []
+    omitted = 0
+    for row in rows:
+        team_name = row.get("team_name") or "Unknown Team"
+        line = f"**{team_name}** — <@{row['user_id']}>"
+        next_text = "\n".join([*lines, line])
+        if len(next_text) > 1850:
+            omitted += 1
+            continue
+        lines.append(line)
+
+    if omitted:
+        lines.append(f"...and {omitted} more.")
+    return "\n".join(lines)
+
+
+class EmergencyDiscordActionError(Exception):
+    pass
+
+
+async def _send_emergency_action_error(interaction: discord.Interaction, message: str) -> None:
+    await safe_reply(interaction, message, ephemeral=True)
+
+
+def _emergency_role_id(key: str) -> int | None:
+    return config.EMERGENCY_SUBS_ROLES.get(key)
+
+
+def _emergency_role_ids(keys_by_role: dict[str, str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for role, key in keys_by_role.items():
+        role_id = _emergency_role_id(key)
+        if role_id is not None:
+            out[role] = role_id
+    return out
+
+
+def _emergency_all_role_ids() -> set[int]:
+    return set(_emergency_role_ids(_EMERGENCY_SUB_ROLE_KEYS).values()) | set(
+        _emergency_role_ids(_EMERGENCY_LF_SUB_ROLE_KEYS).values()
+    )
+
+
+async def _sync_emergency_member_roles(
+    interaction: discord.Interaction,
+    *,
+    selected_roles: set[str],
+    mode: str,
+) -> None:
+    if interaction.guild is None:
+        raise EmergencyDiscordActionError("Run this in the server.")
+    if not isinstance(interaction.user, discord.Member):
+        member = await interaction.guild.fetch_member(interaction.user.id)
+    else:
+        member = interaction.user
+
+    selected_map = _EMERGENCY_SUB_ROLE_KEYS if mode == "subs" else _EMERGENCY_LF_SUB_ROLE_KEYS
+    opposite_map = _EMERGENCY_LF_SUB_ROLE_KEYS if mode == "subs" else _EMERGENCY_SUB_ROLE_KEYS
+    selected_role_ids = _emergency_role_ids(selected_map)
+    opposite_role_ids = _emergency_role_ids(opposite_map)
+
+    missing = [role for role in selected_roles if role not in selected_role_ids]
+    if missing:
+        missing_names = ", ".join(_emergency_role_label(role) for role in missing)
+        raise EmergencyDiscordActionError(f"Emergency role config is missing for: {missing_names}")
+
+    current_role_ids = {role.id for role in getattr(member, "roles", [])}
+    add_ids = {selected_role_ids[role] for role in selected_roles}
+    remove_ids = (
+        {role_id for role, role_id in selected_role_ids.items() if role not in selected_roles}
+        | set(opposite_role_ids.values())
+    )
+
+    roles_to_add = [
+        interaction.guild.get_role(role_id)
+        for role_id in add_ids
+        if role_id not in current_role_ids
+    ]
+    roles_to_remove = [
+        interaction.guild.get_role(role_id)
+        for role_id in remove_ids
+        if role_id in current_role_ids
+    ]
+    missing_role_ids = [role_id for role_id in add_ids | remove_ids if interaction.guild.get_role(role_id) is None]
+    if missing_role_ids:
+        raise EmergencyDiscordActionError("One or more emergency roles could not be found in this server.")
+
+    try:
+        if roles_to_remove:
+            await member.remove_roles(
+                *[role for role in roles_to_remove if role is not None],
+                reason="Emergency sub roles updated",
+            )
+        if roles_to_add:
+            await member.add_roles(
+                *[role for role in roles_to_add if role is not None],
+                reason="Emergency sub roles updated",
+            )
+    except discord.Forbidden as e:
+        raise EmergencyDiscordActionError(
+            "I can't update your emergency roles. Check my Manage Roles permission and role position."
+        ) from e
+    except discord.HTTPException as e:
+        raise EmergencyDiscordActionError("I couldn't update your emergency roles. Try again in a moment.") from e
+
+
+async def _clear_emergency_member_roles(
+    interaction: discord.Interaction,
+    *,
+    role_ids: set[int],
+) -> None:
+    if interaction.guild is None:
+        raise EmergencyDiscordActionError("Run this in the server.")
+    if not isinstance(interaction.user, discord.Member):
+        member = await interaction.guild.fetch_member(interaction.user.id)
+    else:
+        member = interaction.user
+
+    current_role_ids = {role.id for role in getattr(member, "roles", [])}
+    roles_to_remove = [
+        interaction.guild.get_role(role_id)
+        for role_id in role_ids
+        if role_id in current_role_ids
+    ]
+    try:
+        if roles_to_remove:
+            await member.remove_roles(
+                *[role for role in roles_to_remove if role is not None],
+                reason="Emergency sub roles cancelled",
+            )
+    except discord.Forbidden as e:
+        raise EmergencyDiscordActionError(
+            "I can't remove your emergency roles. Check my Manage Roles permission and role position."
+        ) from e
+    except discord.HTTPException as e:
+        raise EmergencyDiscordActionError("I couldn't remove your emergency roles. Try again in a moment.") from e
+
+
+async def _send_emergency_ping(
+    interaction: discord.Interaction,
+    *,
+    mode: str,
+    roles: set[str],
+    team_name: str | None = None,
+) -> None:
+    if not roles or interaction.guild is None:
+        return
+
+    server = config.server_for_guild_id(interaction.guild.id)
+    channel_id = server.emergency_pings_channel_id if server else None
+    if not channel_id:
+        return
+
+    channel = await _get_sendable_channel(interaction.guild, int(channel_id))
+    if channel is None:
+        raise EmergencyDiscordActionError("Couldn't find the emergency pings channel.")
+
+    ping_map = _EMERGENCY_LF_SUB_ROLE_KEYS if mode == "subs" else _EMERGENCY_SUB_ROLE_KEYS
+    ping_role_ids = [
+        _emergency_role_id(ping_map[role])
+        for role in roles
+        if _emergency_role_id(ping_map[role]) is not None
+    ]
+    role_names = ", ".join(_emergency_role_label(role) for role in roles)
+    pings = " ".join(f"<@&{role_id}>" for role_id in dict.fromkeys(ping_role_ids))
+    if mode == "subs":
+        content = f"🔁 <@{interaction.user.id}> is now available as: **{role_names}**.\nPinging: {pings}"
+    else:
+        content = f"🚨 **{team_name}** is looking for: **{role_names}**.\nContact: <@{interaction.user.id}>\nPinging: {pings}"
+
+    try:
+        await channel.send(
+            content,
+            allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=True),
+        )
+    except discord.Forbidden as e:
+        raise EmergencyDiscordActionError("I can't send messages or mention roles in the emergency pings channel.") from e
+    except discord.HTTPException as e:
+        raise EmergencyDiscordActionError("I couldn't send the emergency ping message. Try again in a moment.") from e
+
+
+def _emergency_interaction_debug(interaction: discord.Interaction) -> str:
+    data = interaction.data if isinstance(interaction.data, dict) else {}
+    custom_id = data.get("custom_id") or "-"
+    values = data.get("values") if isinstance(data.get("values"), list) else []
+    created_at = getattr(interaction, "created_at", None)
+    age = "-"
+    if created_at is not None:
+        try:
+            age = f"{(datetime.now(timezone.utc) - created_at).total_seconds():.2f}s"
+        except Exception:
+            age = "-"
+    return (
+        f"id={interaction.id} custom_id={custom_id} values={values} "
+        f"user={interaction.user.id} guild={getattr(interaction.guild, 'id', None)} age={age}"
+    )
+
+
+async def safe_reply(
+    interaction: discord.Interaction,
+    content: str | None = None,
+    *,
+    ephemeral: bool = True,
+    **kwargs,
+) -> None:
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(content, ephemeral=ephemeral, **kwargs)
+        else:
+            try:
+                await interaction.response.send_message(content, ephemeral=ephemeral, **kwargs)
+            except discord.InteractionResponded:
+                await interaction.followup.send(content, ephemeral=ephemeral, **kwargs)
+            except discord.HTTPException as e:
+                if getattr(e, "code", None) != 40060:
+                    raise
+                await interaction.followup.send(content, ephemeral=ephemeral, **kwargs)
+    except discord.NotFound as e:
+        print(
+            "Emergency interaction reply skipped; interaction is no longer valid:",
+            _emergency_interaction_debug(interaction),
+            repr(e),
+        )
+
+
+async def _safe_edit_deferred_or_reply(
+    interaction: discord.Interaction,
+    content: str | None = None,
+    **kwargs,
+) -> None:
+    if interaction.response.is_done():
+        try:
+            await interaction.edit_original_response(content=content, **kwargs)
+        except discord.NotFound:
+            await safe_reply(interaction, content, ephemeral=True, **kwargs)
+    else:
+        await safe_reply(interaction, content, ephemeral=True, **kwargs)
+
+
+async def _safe_defer_emergency(interaction: discord.Interaction) -> bool:
+    if interaction.response.is_done():
+        return True
+
+    try:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        return True
+    except discord.InteractionResponded:
+        return True
+    except discord.NotFound as e:
+        print(
+            "Emergency interaction defer skipped; interaction expired or is from an old client:",
+            _emergency_interaction_debug(interaction),
+            repr(e),
+        )
+        return False
+    except discord.HTTPException as e:
+        if getattr(e, "code", None) == 40060:
+            print(
+                "Emergency interaction defer skipped; interaction was already acknowledged:",
+                _emergency_interaction_debug(interaction),
+                repr(e),
+            )
+            return True
+        raise
+
+
+async def _send_emergency_error(interaction: discord.Interaction, error: Exception) -> None:
+    print("Emergency subs DB error:", repr(error))
+    print("Emergency subs DB error type:", type(error).__name__)
+    if getattr(error, "__cause__", None) is not None:
+        print("Emergency subs DB error cause:", repr(error.__cause__))
+    if getattr(error, "__context__", None) is not None:
+        print("Emergency subs DB error context:", repr(error.__context__))
+    try:
+        print("Emergency subs DB diagnostics:", emergency_subs.database_diagnostics())
+    except Exception as diagnostics_error:
+        print("Emergency subs DB diagnostics failed:", repr(diagnostics_error))
+    msg = "Emergency sub data is temporarily unavailable. Check `DATABASE_URL` or `SUPABASE_PASSWORD` and try again."
+    try:
+        await safe_reply(interaction, msg, ephemeral=True)
+    except discord.DiscordException:
+        pass
+
+
+class EmergencyRoleRegistrationSelect(discord.ui.Select):
+    def __init__(self, *, mode: str, requester_id: int, selected_roles: set[str], team_name: str | None = None):
+        if mode not in {"subs", "requests"}:
+            raise ValueError(f"Invalid emergency registration mode: {mode!r}")
+        placeholder = "Select the roles you can sub for..." if mode == "subs" else "Select the roles you need..."
+        custom_id = f"rematchhq:emergency:{mode}:update"
+        super().__init__(
+            placeholder=placeholder,
+            min_values=0,
+            max_values=len(_EMERGENCY_ROLE_LABELS),
+            options=_emergency_role_options(selected_roles=selected_roles),
+            custom_id=custom_id,
+        )
+        self.mode = mode
+        self.requester_id = int(requester_id)
+        self.team_name = " ".join((team_name or "").split())[:50]
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.requester_id:
+            await safe_reply(interaction, "This menu is not for you.", ephemeral=True)
+            return
+
+        selected_roles = [role for role in self.values if role in _EMERGENCY_ROLE_LABELS]
+        if not await _safe_defer_emergency(interaction):
+            return
+
+        try:
+            previous_roles = set(
+                await (
+                    emergency_subs.getUserSubRoles(str(interaction.user.id))
+                    if self.mode == "subs"
+                    else emergency_subs.getUserRequestRoles(str(interaction.user.id))
+                )
+            )
+            await _sync_emergency_member_roles(
+                interaction,
+                selected_roles=set(selected_roles),
+                mode=self.mode,
+            )
+            if self.mode == "subs":
+                await emergency_subs.setUserSubRoles(str(interaction.user.id), selected_roles)
+                await emergency_subs.clearUserRequestRoles(str(interaction.user.id))
+                msg = (
+                    f"✅ You are now available as: {_format_emergency_roles(selected_roles)}"
+                    if selected_roles
+                    else "✅ Your emergency sub availability has been removed."
+                )
+            else:
+                await emergency_subs.setUserRequestRolesForTeam(str(interaction.user.id), selected_roles, self.team_name)
+                await emergency_subs.clearUserSubRoles(str(interaction.user.id))
+                msg = (
+                    f"✅ **{self.team_name}** is now looking for: {_format_emergency_roles(selected_roles)}"
+                    if selected_roles
+                    else "✅ Your emergency sub request has been cancelled."
+                )
+            new_roles = set(selected_roles) - previous_roles
+            await _send_emergency_ping(
+                interaction,
+                mode=self.mode,
+                roles=new_roles,
+                team_name=self.team_name,
+            )
+        except EmergencyDiscordActionError as e:
+            await _send_emergency_action_error(interaction, str(e))
+            return
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+
+        await _safe_edit_deferred_or_reply(interaction, msg, view=None)
+
+
+class EmergencyRoleRegistrationView(discord.ui.View):
+    def __init__(self, *, mode: str, requester_id: int, selected_roles: set[str], team_name: str | None = None):
+        super().__init__(timeout=180)
+        self.add_item(
+            EmergencyRoleRegistrationSelect(
+                mode=mode,
+                requester_id=requester_id,
+                selected_roles=selected_roles,
+                team_name=team_name,
+            )
+        )
+
+
+class EmergencyTeamNameModal(discord.ui.Modal, title="Need an Emergency Sub"):
+    team_name = discord.ui.TextInput(
+        label="Team Name",
+        required=True,
+        max_length=50,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        team_name = " ".join((self.team_name.value or "").split())[:50]
+        if not team_name:
+            await safe_reply(interaction, "Team name is required.", ephemeral=True)
+            return
+
+        if not await _safe_defer_emergency(interaction):
+            return
+
+        try:
+            roles = await emergency_subs.getUserRequestRoles(str(interaction.user.id))
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+
+        await _safe_edit_deferred_or_reply(
+            interaction,
+            f"Select the roles **{team_name}** needs covered. Submit with no roles selected to cancel your request.",
+            view=EmergencyRoleRegistrationView(
+                mode="requests",
+                requester_id=interaction.user.id,
+                selected_roles=set(roles),
+                team_name=team_name,
+            ),
+        )
+
+
+class EmergencyRoleLookupSelect(discord.ui.Select):
+    def __init__(self, *, mode: str, requester_id: int):
+        if mode not in {"subs", "requests"}:
+            raise ValueError(f"Invalid emergency lookup mode: {mode!r}")
+        placeholder = "Select a role to view..."
+        custom_id = f"rematchhq:emergency:{mode}:lookup"
+        super().__init__(
+            placeholder=placeholder,
+            min_values=1,
+            max_values=1,
+            options=_emergency_role_options(),
+            custom_id=custom_id,
+        )
+        self.mode = mode
+        self.requester_id = int(requester_id)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.requester_id:
+            await safe_reply(interaction, "This menu is not for you.", ephemeral=True)
+            return
+
+        role = self.values[0] if self.values else ""
+        table = "emergency_subs" if self.mode == "subs" else "emergency_requests"
+        if not await _safe_defer_emergency(interaction):
+            return
+
+        try:
+            user_ids = await emergency_subs.getUsersByRole(table, role)
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+
+        role_label = _emergency_role_label(role)
+        if not user_ids:
+            msg = (
+                "❌ No available subs for this role right now."
+                if self.mode == "subs"
+                else "❌ No teams are currently looking for a sub in this role."
+            )
+            await _safe_edit_deferred_or_reply(interaction, msg, view=None)
+            return
+
+        if self.mode == "subs":
+            embed = discord.Embed(
+                title=f"Available Subs — {role_label}",
+                description=_format_available_sub_lines(user_ids) or "❌ No available subs for this role right now.",
+                color=0xbe629b,
+            )
+        else:
+            embed = discord.Embed(
+                title=f"Teams Looking — {role_label}",
+                description=_format_team_request_lines(user_ids)
+                or "❌ No teams are currently looking for a sub in this role.",
+                color=0xbe629b,
+            )
+
+        await _safe_edit_deferred_or_reply(
+            interaction,
+            None,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=False),
+            view=None,
+        )
+
+
+class EmergencyRoleLookupView(discord.ui.View):
+    def __init__(self, *, mode: str, requester_id: int):
+        super().__init__(timeout=180)
+        self.add_item(EmergencyRoleLookupSelect(mode=mode, requester_id=requester_id))
+
+
+class EmergencyPlayersView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🔁 Be a Sub",
+        style=discord.ButtonStyle.primary,
+        custom_id="rematchhq:emergency:be_sub",
+        row=0,
+    )
+    async def be_sub(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not _check_emergency_cooldown(interaction.user.id, "be_sub"):
+            await safe_reply(interaction, "Please wait a few seconds before using this again.", ephemeral=True)
+            return
+
+        if not await _safe_defer_emergency(interaction):
+            return
+
+        try:
+            roles = await emergency_subs.getUserSubRoles(str(interaction.user.id))
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+
+        await _safe_edit_deferred_or_reply(
+            interaction,
+            "Select the roles you can cover as an emergency sub. Submit with no roles selected to remove yourself.",
+            view=EmergencyRoleRegistrationView(
+                mode="subs",
+                requester_id=interaction.user.id,
+                selected_roles=set(roles),
+            ),
+        )
+
+    @discord.ui.button(
+        label="🔍 View Teams Looking",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:emergency:view_requests",
+        row=0,
+    )
+    async def view_teams_looking(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await safe_reply(
+            interaction,
+            "Choose a role to view teams looking for emergency subs.",
+            ephemeral=True,
+            view=EmergencyRoleLookupView(mode="requests", requester_id=interaction.user.id),
+        )
+
+    @discord.ui.button(
+        label="❌ Cancel Availability",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:emergency:cancel_subs",
+        row=0,
+    )
+    async def cancel_availability(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not _check_emergency_cooldown(interaction.user.id, "cancel_subs"):
+            await safe_reply(interaction, "Please wait a few seconds before using this again.", ephemeral=True)
+            return
+
+        if not await _safe_defer_emergency(interaction):
+            return
+        try:
+            await _clear_emergency_member_roles(
+                interaction,
+                role_ids=set(_emergency_role_ids(_EMERGENCY_SUB_ROLE_KEYS).values()),
+            )
+            await emergency_subs.clearUserSubRoles(str(interaction.user.id))
+        except EmergencyDiscordActionError as e:
+            await _send_emergency_action_error(interaction, str(e))
+            return
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+        await _safe_edit_deferred_or_reply(
+            interaction,
+            "✅ Your emergency sub availability has been removed.",
+            view=None,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("EmergencyPlayersView error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong handling that button.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class EmergencyTeamsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🚨 Need a Sub",
+        style=discord.ButtonStyle.danger,
+        custom_id="rematchhq:emergency:need_sub",
+        row=1,
+    )
+    async def need_sub(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not _check_emergency_cooldown(interaction.user.id, "need_sub"):
+            await safe_reply(interaction, "Please wait a few seconds before using this again.", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.send_modal(EmergencyTeamNameModal())
+        except discord.InteractionResponded:
+            await safe_reply(interaction, "Open the team-name form again from the emergency panel.", ephemeral=True)
+        except discord.NotFound as e:
+            print(
+                "Emergency need-sub modal skipped; interaction is no longer valid:",
+                _emergency_interaction_debug(interaction),
+                repr(e),
+            )
+
+    @discord.ui.button(
+        label="📋 View Available Subs",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:emergency:view_subs",
+        row=1,
+    )
+    async def view_available_subs(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await safe_reply(
+            interaction,
+            "Choose a role to view available emergency subs.",
+            ephemeral=True,
+            view=EmergencyRoleLookupView(mode="subs", requester_id=interaction.user.id),
+        )
+
+    @discord.ui.button(
+        label="❌ Cancel Request",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:emergency:cancel_requests",
+        row=1,
+    )
+    async def cancel_request(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not _check_emergency_cooldown(interaction.user.id, "cancel_requests"):
+            await safe_reply(interaction, "Please wait a few seconds before using this again.", ephemeral=True)
+            return
+
+        if not await _safe_defer_emergency(interaction):
+            return
+        try:
+            await _clear_emergency_member_roles(
+                interaction,
+                role_ids=set(_emergency_role_ids(_EMERGENCY_LF_SUB_ROLE_KEYS).values()),
+            )
+            await emergency_subs.clearUserRequestRoles(str(interaction.user.id))
+        except EmergencyDiscordActionError as e:
+            await _send_emergency_action_error(interaction, str(e))
+            return
+        except Exception as e:
+            await _send_emergency_error(interaction, e)
+            return
+        await _safe_edit_deferred_or_reply(
+            interaction,
+            "✅ Your emergency sub request has been cancelled.",
+            view=None,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("EmergencyTeamsView error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong handling that button.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
 class SetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -4740,26 +5473,6 @@ class SetupView(discord.ui.View):
                 return
 
         await interaction.response.send_modal(PredictionResultsModal())
-
-    @discord.ui.button(
-        label="✌️ Calculate GGs",
-        style=discord.ButtonStyle.secondary,
-        custom_id="rematchhq:calculate_ggs_setup",
-        row=3,
-    )
-    async def calculate_ggs_setup(self, interaction: discord.Interaction, _: discord.ui.Button):
-        if not interaction.guild or not interaction.channel:
-            await interaction.response.send_message("Run this in the server.", ephemeral=True)
-            return
-
-        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
-            server = config.server_for_guild_id(interaction.guild.id)
-            required = server.setup_channel_id if server else None
-            if required is not None:
-                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
-                return
-
-        await interaction.response.send_modal(GgClassModal())
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("SetupView error:", repr(error))

@@ -25,8 +25,30 @@ def _get_required(name: str) -> str:
 
 TOKEN = _get_required("DISCORD_TOKEN")
 
-GUILD_ID_RAW = os.getenv("DISCORD_GUILD_ID", "").strip()
-GUILD_ID = int(GUILD_ID_RAW) if GUILD_ID_RAW else None
+GUILD_ID_RAW = (os.getenv("DISCORD_GUILD_ID") or os.getenv("GUILD_ID") or "").strip()
+
+
+def _parse_guild_ids(raw: str) -> tuple[int, ...]:
+    if not raw:
+        return ()
+
+    guild_ids: list[int] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if not value:
+            continue
+        try:
+            guild_ids.append(int(value))
+        except ValueError as e:
+            raise SystemExit(
+                "`DISCORD_GUILD_ID` / `GUILD_ID` must contain numeric Discord server IDs, "
+                "optionally comma-separated."
+            ) from e
+    return tuple(dict.fromkeys(guild_ids))
+
+
+GUILD_IDS = _parse_guild_ids(GUILD_ID_RAW)
+GUILD_ID = GUILD_IDS[0] if GUILD_IDS else None
 
 SYNC_COMMANDS_ON_STARTUP = os.getenv("SYNC_COMMANDS_ON_STARTUP", "1").strip().lower() not in {
     "0",
@@ -69,6 +91,7 @@ class ServerConfig:
 
     # GG channel (message counts for "Class of the Month").
     gg_channel_id: int | None = None
+    emergency_pings_channel_id: int | None = None
 
     # Minimum role ID - team roles will be positioned above this role.
     minimum_role_id: int | None = None
@@ -191,6 +214,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 compliments_channel_id=_as_int(block.get("COMPLIMENTS_CHANNEL_ID")),
                 compliments_ping_id=_as_int(block.get("COMPLIMENTS_PING_ID")),
                 gg_channel_id=_as_int(block.get("GG_CHANNEL_ID")),
+                emergency_pings_channel_id=_as_int(block.get("EMERGENCY_PINGS_CHANNEL_ID")),
                 minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
                 tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
                 hall_of_fame_channel_id=_parse_int_or_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
@@ -219,3 +243,22 @@ def is_allowed_setup_channel(*, guild_id: int, channel_id: int) -> bool:
 
 
 SERVERS_BY_ID: dict[int, ServerConfig] = _load_servers()
+
+
+def _load_emergency_subs_roles() -> dict[str, int]:
+    with _CONFIG_YAML.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        return {}
+    roles = raw.get("EMERGENCY_SUBS_ROLES")
+    if not isinstance(roles, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key, value in roles.items():
+        role_id = _as_int(value)
+        if role_id is not None:
+            out[str(key).strip().lower()] = role_id
+    return out
+
+
+EMERGENCY_SUBS_ROLES: dict[str, int] = _load_emergency_subs_roles()

@@ -3,3 +3,4 @@ python-dotenv
 httpx
 PyYAML
 Pillow
+asyncpg
