@@ -12,7 +12,7 @@ import discord
 import httpx
 import yaml
 
-from . import birthdays, config, emergency_subs
+from . import birthdays, config, emergency_subs, giveaways
 from .team_emojis import (
     emoji_for,
     emoji_for_org,
@@ -4719,6 +4719,286 @@ class BirthdaySetupView(discord.ui.View):
             pass
 
 
+def _has_admin_or_manage_guild(member: discord.Member) -> bool:
+    return bool(member.guild_permissions.administrator or member.guild_permissions.manage_guild)
+
+
+async def _require_admin_or_manage_guild(interaction: discord.Interaction) -> bool:
+    if not interaction.guild:
+        await safe_reply(interaction, "Run this in the server.", ephemeral=True)
+        return False
+
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        try:
+            member = await interaction.guild.fetch_member(interaction.user.id)
+        except discord.NotFound:
+            await safe_reply(interaction, "Could not verify your permissions for this server.", ephemeral=True)
+            return False
+
+    if not _has_admin_or_manage_guild(member):
+        await safe_reply(
+            interaction,
+            "You need **Administrator** or **Manage Server** permission to use this.",
+            ephemeral=True,
+        )
+        return False
+    return True
+
+
+class GiveawayEntryView(discord.ui.View):
+    def __init__(self, giveaway_id: int, *, disabled: bool = False):
+        super().__init__(timeout=None)
+        self.giveaway_id = int(giveaway_id)
+        button = discord.ui.Button(
+            emoji="🎉",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"rematchhq:giveaway:enter:{self.giveaway_id}",
+            disabled=disabled,
+        )
+        button.callback = self.enter_giveaway
+        self.add_item(button)
+
+    async def enter_giveaway(self, interaction: discord.Interaction):
+        giveaway = await giveaways.get_giveaway(self.giveaway_id)
+        if giveaway is None or giveaway.ended:
+            await safe_reply(interaction, "This giveaway has ended.", ephemeral=True)
+            return
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if giveaway.ends_at <= now:
+            await safe_reply(interaction, "This giveaway has ended.", ephemeral=True)
+            return
+
+        try:
+            added = await giveaways.add_entry(self.giveaway_id, interaction.user.id)
+        except Exception as e:
+            print("Giveaway entry failed:", repr(e))
+            await safe_reply(interaction, "Could not enter the giveaway right now. Please try again in a bit.", ephemeral=True)
+            return
+
+        if not added:
+            await safe_reply(interaction, "You’re already entered in this giveaway.", ephemeral=True)
+            return
+
+        entries_count = await giveaways.entry_count(self.giveaway_id)
+        if interaction.message is not None:
+            try:
+                await interaction.message.edit(
+                    embed=giveaways.giveaway_embed(giveaway, entries_count=entries_count),
+                    view=GiveawayEntryView(self.giveaway_id),
+                )
+            except discord.DiscordException as e:
+                print("Giveaway entry embed update failed:", repr(e))
+
+        await safe_reply(interaction, "You entered the giveaway 🎉", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("GiveawayEntryView error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong handling that giveaway button.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class GiveawayModal(discord.ui.Modal, title="Giveaway"):
+    duration = discord.ui.TextInput(
+        label="Duration",
+        placeholder="Default: 7 days. Examples: 10 minutes, 2h, 7d, 1 week",
+        required=False,
+        max_length=40,
+    )
+    winners_count = discord.ui.TextInput(
+        label="Nb of winners",
+        placeholder="Default: 1",
+        required=False,
+        max_length=5,
+    )
+    prize = discord.ui.TextInput(
+        label="Prize",
+        placeholder=f"Default: {giveaways.DEFAULT_PRIZE}",
+        required=False,
+        max_length=250,
+    )
+    provider = discord.ui.TextInput(
+        label="Provider",
+        placeholder=f"Default: {giveaways.DEFAULT_PROVIDER}",
+        required=False,
+        max_length=120,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not await _require_admin_or_manage_guild(interaction):
+            return
+        if not interaction.guild:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        try:
+            duration = giveaways.parse_duration(str(self.duration.value or ""))
+            winners_count = giveaways.parse_winners_count(str(self.winners_count.value or ""))
+            prize = giveaways.clean_prize(str(self.prize.value or ""))
+            provider = giveaways.clean_provider(str(self.provider.value or ""))
+        except giveaways.GiveawayInputError as e:
+            await interaction.response.send_message(str(e), ephemeral=True)
+            return
+
+        if config.GIVEAWAYS_CHANNEL_ID is None:
+            await interaction.response.send_message("Missing `GIVEAWAYS_CHANNEL_ID` in `config.yaml`.", ephemeral=True)
+            return
+        if config.GIVEAWAYS_ROLE_ID is None:
+            await interaction.response.send_message("Missing `GIVEAWAYS_ROLE_ID` in `config.yaml`.", ephemeral=True)
+            return
+
+        channel = await _get_sendable_channel(interaction.guild, config.GIVEAWAYS_CHANNEL_ID)
+        if channel is None:
+            await interaction.response.send_message("Couldn't find the giveaways channel.", ephemeral=True)
+            return
+
+        role = interaction.guild.get_role(config.GIVEAWAYS_ROLE_ID)
+        if role is None:
+            await interaction.response.send_message("Couldn't find the giveaways ping role.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        ends_at = datetime.now(timezone.utc).replace(tzinfo=None) + duration
+
+        try:
+            giveaway = await giveaways.create_giveaway(
+                channel_id=config.GIVEAWAYS_CHANNEL_ID,
+                guild_id=interaction.guild.id,
+                prize=prize,
+                provider=provider,
+                winners_count=winners_count,
+                ends_at=ends_at,
+                created_by=interaction.user.id,
+            )
+            message = await channel.send(
+                content=f"<@&{config.GIVEAWAYS_ROLE_ID}>",
+                embed=giveaways.giveaway_embed(giveaway, entries_count=0),
+                view=GiveawayEntryView(giveaway.id),
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=True, users=False),
+            )
+            giveaway = await giveaways.set_message_id(giveaway.id, message.id)
+            try:
+                interaction.client.add_view(GiveawayEntryView(giveaway.id), message_id=message.id)
+            except ValueError:
+                pass
+        except discord.Forbidden:
+            await interaction.followup.send("I don't have permission to post in the giveaways channel.", ephemeral=True)
+            return
+        except discord.DiscordException as e:
+            print("Giveaway post failed:", repr(e))
+            await interaction.followup.send("Discord failed while creating the giveaway. Check bot logs.", ephemeral=True)
+            return
+        except Exception as e:
+            print("Giveaway database/create failed:", repr(e))
+            await interaction.followup.send("Could not create the giveaway right now. Check bot logs.", ephemeral=True)
+            return
+
+        await interaction.followup.send(f"Giveaway posted in <#{config.GIVEAWAYS_CHANNEL_ID}>.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("GiveawayModal error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong while creating the giveaway.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+class ActiveGiveawaySelect(discord.ui.Select):
+    def __init__(self, active_rows: list[tuple[giveaways.Giveaway, int]]):
+        options: list[discord.SelectOption] = []
+        for giveaway, entries_count in active_rows[:25]:
+            ts = giveaways.discord_timestamp(giveaway.ends_at)
+            options.append(
+                discord.SelectOption(
+                    label=_truncate_text(f"#{giveaway.id} - {giveaway.prize}", 100),
+                    value=str(giveaway.id),
+                    description=_truncate_text(f"{entries_count} entries - ends <t:{ts}:R>", 100),
+                    emoji="🎁",
+                )
+            )
+        super().__init__(
+            placeholder="Select a giveaway to end",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if not isinstance(view, ActiveGiveawaysView):
+            await safe_reply(interaction, "Could not handle that giveaway selection.", ephemeral=True)
+            return
+        view.selected_giveaway_id = int(self.values[0])
+        await interaction.response.edit_message(
+            content=f"Selected giveaway `#{view.selected_giveaway_id}`. Click **End Selected Giveaway** to end it now.",
+            view=view,
+        )
+
+
+class ActiveGiveawaysView(discord.ui.View):
+    def __init__(self, *, requester_id: int, active_rows: list[tuple[giveaways.Giveaway, int]]):
+        super().__init__(timeout=180)
+        self.requester_id = int(requester_id)
+        self.selected_giveaway_id: int | None = None
+        if active_rows:
+            self.add_item(ActiveGiveawaySelect(active_rows))
+
+    @discord.ui.button(label="End Selected Giveaway", style=discord.ButtonStyle.danger)
+    async def end_selected(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await safe_reply(interaction, "Only the person who opened this can end a giveaway here.", ephemeral=True)
+            return
+        if not await _require_admin_or_manage_guild(interaction):
+            return
+        if self.selected_giveaway_id is None:
+            await safe_reply(interaction, "Select a giveaway first.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            end_fn = getattr(interaction.client, "end_giveaway_now", None)
+            if end_fn is None:
+                raise RuntimeError("Giveaway ending function is not available.")
+            result = await end_fn(self.selected_giveaway_id)
+        except Exception as e:
+            print("Manual giveaway end failed:", repr(e))
+            await interaction.followup.send("Could not end that giveaway. Check bot logs.", ephemeral=True)
+            return
+        await interaction.followup.send(result or "Giveaway ended.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("ActiveGiveawaysView error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong handling the giveaway list.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+async def _active_giveaways_summary() -> tuple[str, list[tuple[giveaways.Giveaway, int]]]:
+    active = await giveaways.active_giveaways()
+    active_rows: list[tuple[giveaways.Giveaway, int]] = []
+    lines = ["Active giveaways"]
+    if not active:
+        return "No active giveaways right now.", active_rows
+
+    for giveaway in active[:25]:
+        entries_count = await giveaways.entry_count(giveaway.id)
+        active_rows.append((giveaway, entries_count))
+        ts = giveaways.discord_timestamp(giveaway.ends_at)
+        message_ref = f"message `{giveaway.message_id}`" if giveaway.message_id else "message pending"
+        lines.append(
+            f"`#{giveaway.id}` 🎁 **{giveaway.prize}** - {entries_count} entries - ends <t:{ts}:R> ({message_ref})"
+        )
+
+    if len(active) > 25:
+        lines.append(f"\nShowing first 25 of {len(active)} active giveaways.")
+
+    return "\n".join(lines), active_rows
+
+
 class SetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -5717,6 +5997,75 @@ class SetupView(discord.ui.View):
                 return
 
         await interaction.response.send_modal(PredictionResultsModal())
+
+    @discord.ui.button(
+        label="Add Giveaway",
+        emoji="🎉",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:giveaway:create",
+        row=4,
+    )
+    async def giveaway(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not await _require_admin_or_manage_guild(interaction):
+            return
+
+        await interaction.response.send_modal(GiveawayModal())
+
+    @discord.ui.button(
+        label="List Giveaways",
+        emoji="🎁",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:giveaway:list",
+        row=4,
+    )
+    async def list_giveaways(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not await _require_admin_or_manage_guild(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            summary, active_rows = await _active_giveaways_summary()
+        except Exception as e:
+            print("Giveaway list failed:", repr(e))
+            await interaction.followup.send("Could not load active giveaways. Check bot logs.", ephemeral=True)
+            return
+
+        if not active_rows:
+            await interaction.followup.send(
+                _truncate_text(summary, 1900),
+                ephemeral=True,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            return
+
+        await interaction.followup.send(
+            _truncate_text(summary, 1900),
+            ephemeral=True,
+            view=ActiveGiveawaysView(requester_id=interaction.user.id, active_rows=active_rows),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("SetupView error:", repr(error))

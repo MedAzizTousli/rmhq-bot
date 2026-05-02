@@ -1,5 +1,6 @@
 try:
     import asyncio
+    import random
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
@@ -20,9 +21,9 @@ if not hasattr(discord, "app_commands"):
         "  pip install -U discord.py"
     )
 
-from . import birthdays, config
+from . import birthdays, config, giveaways
 from . import emergency_subs
-from .views import BirthdaySetupView, EmergencyPlayersView, EmergencyTeamsView, SetupPartView, SetupView
+from .views import BirthdaySetupView, EmergencyPlayersView, EmergencyTeamsView, GiveawayEntryView, SetupPartView, SetupView
 
 
 class RematchHQBot(commands.Bot):
@@ -33,6 +34,7 @@ class RematchHQBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self._emergency_reset_task: asyncio.Task | None = None
         self._birthday_announcement_task: asyncio.Task | None = None
+        self._giveaway_task: asyncio.Task | None = None
         self._birthday_role_lock = asyncio.Lock()
 
     async def setup_hook(self):
@@ -43,6 +45,7 @@ class RematchHQBot(commands.Bot):
         self.add_view(EmergencyTeamsView())
         self._emergency_reset_task = asyncio.create_task(self._emergency_midnight_reset_loop())
         self._birthday_announcement_task = asyncio.create_task(self._birthday_announcement_loop())
+        self._giveaway_task = asyncio.create_task(self._giveaway_loop())
 
         if not config.SYNC_COMMANDS_ON_STARTUP:
             print("Skipping slash command sync (SYNC_COMMANDS_ON_STARTUP=0).")
@@ -101,6 +104,8 @@ class RematchHQBot(commands.Bot):
             self._emergency_reset_task.cancel()
         if self._birthday_announcement_task is not None:
             self._birthday_announcement_task.cancel()
+        if self._giveaway_task is not None:
+            self._giveaway_task.cancel()
         await super().close()
 
     async def _emergency_midnight_reset_loop(self) -> None:
@@ -341,6 +346,123 @@ class RematchHQBot(commands.Bot):
         title = f"Happy birthday {' '.join(names)} 🎉"
         return title if len(title) <= 100 else title[:97].rstrip() + "..."
 
+    async def _giveaway_loop(self) -> None:
+        await self.wait_until_ready()
+        try:
+            await self._register_active_giveaway_views()
+        except Exception as e:
+            print("Giveaway startup registration failed:", repr(e))
+
+        while not self.is_closed():
+            try:
+                await self._end_due_giveaways()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print("Giveaway ending loop failed:", repr(e))
+            await asyncio.sleep(60)
+
+    async def _register_active_giveaway_views(self) -> None:
+        active = await giveaways.active_giveaways()
+        registered = 0
+        for giveaway in active:
+            if not giveaway.message_id:
+                continue
+            try:
+                self.add_view(GiveawayEntryView(giveaway.id), message_id=int(giveaway.message_id))
+                registered += 1
+            except ValueError:
+                pass
+        print(f"Giveaway startup: registered {registered} active giveaway view(s).")
+
+    async def _end_due_giveaways(self) -> None:
+        due = await giveaways.due_giveaways()
+        if not due:
+            return
+        print(f"Giveaway ending: {len(due)} giveaway(s) due.")
+        for giveaway in due:
+            await self._end_giveaway(giveaway)
+
+    async def _end_giveaway(self, giveaway: giveaways.Giveaway) -> str:
+        if not giveaway.message_id:
+            msg = f"Giveaway {giveaway.id}: missing message ID; marking ended."
+            print(msg)
+            await giveaways.mark_ended(giveaway.id)
+            return msg
+
+        entries = await giveaways.entries(giveaway.id)
+        entries_count = len(entries)
+        winners_count = min(giveaway.winners_count, entries_count)
+        winner_ids = random.sample(entries, winners_count) if winners_count else []
+        winners_text = " ".join(f"<@{user_id}>" for user_id in winner_ids) if winner_ids else "No winners"
+
+        channel = self.get_channel(int(giveaway.channel_id))
+        if channel is None:
+            try:
+                channel = await self.fetch_channel(int(giveaway.channel_id))
+            except discord.NotFound:
+                msg = f"Giveaway {giveaway.id}: channel not found; marking ended."
+                print(msg)
+                await giveaways.mark_ended(giveaway.id)
+                return msg
+        if not hasattr(channel, "fetch_message"):
+            msg = f"Giveaway {giveaway.id}: channel is not message-fetchable."
+            print(msg)
+            return msg
+
+        try:
+            message = await channel.fetch_message(int(giveaway.message_id))  # type: ignore[attr-defined]
+        except discord.NotFound:
+            msg = f"Giveaway {giveaway.id}: message not found; marking ended."
+            print(msg)
+            await giveaways.mark_ended(giveaway.id)
+            return msg
+        except discord.DiscordException as e:
+            msg = f"Giveaway {giveaway.id}: failed to fetch message: {e!r}"
+            print(msg)
+            return msg
+
+        try:
+            if winner_ids:
+                await message.reply(
+                    f"Congratulations {winners_text}! You won the **{giveaway.prize}** 🎉",
+                    allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+                )
+            else:
+                await message.reply(
+                    "No valid entries were submitted for this giveaway.",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+
+            await message.edit(
+                embed=giveaways.giveaway_embed(
+                    giveaway,
+                    entries_count=entries_count,
+                    winners_text=winners_text,
+                ),
+                view=GiveawayEntryView(giveaway.id, disabled=True),
+            )
+            await giveaways.mark_ended(giveaway.id)
+            msg = f"Giveaway {giveaway.id}: ended with {entries_count} entries and {len(winner_ids)} winner(s)."
+            print(msg)
+            return msg
+        except discord.Forbidden:
+            msg = f"Giveaway {giveaway.id}: missing permissions to reply/edit giveaway message."
+            print(msg)
+            return msg
+        except discord.DiscordException as e:
+            msg = f"Giveaway {giveaway.id}: Discord error while ending giveaway: {e!r}"
+            print(msg)
+            return msg
+
+    async def end_giveaway_now(self, giveaway_id: int) -> str:
+        giveaway = await giveaways.get_giveaway(int(giveaway_id))
+        if giveaway is None:
+            return "That giveaway does not exist."
+        if giveaway.ended:
+            return "That giveaway has already ended."
+        return await self._end_giveaway(giveaway)
+
 
 bot = RematchHQBot()
 
@@ -433,7 +555,9 @@ async def setup(interaction: discord.Interaction):
             "👑 **Rosters:** Post the current rosters (top 8).\n"
             "💶 **Earnings:** Calculate prize earnings from Notion.\n\n"
             "🔮 **Add Prediction:** Pick the correct answer from a finished poll.\n"
-            "📈 **Calculate Predictions:** Show the top predictors for a given month."
+            "📈 **Calculate Predictions:** Show the top predictors for a given month.\n\n"
+            "🎉 **Add Giveaway:** Create a giveaway.\n"
+            "🎁 **List Giveaways:** View and end active giveaways."
         ),
         color=0xbe629b,
     )
