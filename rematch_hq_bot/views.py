@@ -1,4 +1,5 @@
 import csv
+import io
 import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -11,7 +12,7 @@ import discord
 import httpx
 import yaml
 
-from . import config, emergency_subs
+from . import birthdays, config, emergency_subs
 from .team_emojis import (
     emoji_for,
     emoji_for_org,
@@ -4511,6 +4512,207 @@ class EmergencyTeamsView(discord.ui.View):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         print("EmergencyTeamsView error:", repr(error))
+        try:
+            await safe_reply(interaction, "Something went wrong handling that button.", ephemeral=True)
+        except discord.DiscordException:
+            pass
+
+
+_BIRTHDAY_FORMAT_HELP = (
+    "Please enter a real day and month, for example `5 December`, `5 Dec`, `05/12`, or `December 5`."
+)
+
+
+async def _birthday_member_display_name(guild: discord.Guild | None, user_id: str) -> str:
+    if guild is None:
+        return "Unknown member"
+
+    member = guild.get_member(int(user_id))
+    if member is None:
+        try:
+            member = await guild.fetch_member(int(user_id))
+        except discord.DiscordException:
+            member = None
+
+    if member is None:
+        return "Unknown member"
+
+    return " ".join(member.display_name.split()) or "Unknown member"
+
+
+async def _birthday_list_text(rows: list[birthdays.Birthday], guild: discord.Guild | None) -> str:
+    if not rows:
+        return "Registered Birthdays\n\nNo birthdays have been registered yet.\n"
+
+    lines: list[str] = ["Registered Birthdays"]
+    current_month: int | None = None
+    for row in rows:
+        if row.month != current_month:
+            current_month = row.month
+            lines.append("")
+            lines.append(birthdays.MONTH_NAMES[row.month])
+            lines.append("-" * len(birthdays.MONTH_NAMES[row.month]))
+        display_name = await _birthday_member_display_name(guild, row.user_id)
+        lines.append(f"{row.day:02d} {birthdays.MONTH_NAMES[row.month]} - {display_name}")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+class BirthdayModal(discord.ui.Modal, title="Add Birthday"):
+    birthday = discord.ui.TextInput(
+        label="Birthday",
+        placeholder="e.g. 5 December, 5 Dec, 05/12, December 5",
+        required=True,
+        max_length=40,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            day, month = birthdays.parse_birthday_input(str(self.birthday.value or ""))
+        except birthdays.BirthdayParseError as e:
+            await interaction.response.send_message(f"{e} {_BIRTHDAY_FORMAT_HELP}", ephemeral=True)
+            return
+
+        try:
+            await birthdays.save_birthday(str(interaction.user.id), day, month)
+        except Exception as e:
+            print("BirthdayModal save failed:", repr(e))
+            await interaction.response.send_message(
+                "Could not save your birthday right now. Please try again in a bit.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"Your birthday has been saved as {birthdays.format_birthday(day, month)}.",
+            ephemeral=True,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        print("BirthdayModal error:", repr(error))
+        try:
+            await safe_reply(
+                interaction,
+                "Something went wrong while saving your birthday. Please try again in a bit.",
+                ephemeral=True,
+            )
+        except discord.DiscordException:
+            pass
+
+
+class BirthdaySetupView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="✅Add/Update Birthday",
+        style=discord.ButtonStyle.success,
+        custom_id="rematchhq:birthday:add",
+    )
+    async def add_birthday(self, interaction: discord.Interaction, _: discord.ui.Button):
+        try:
+            await interaction.response.send_modal(BirthdayModal())
+        except discord.InteractionResponded:
+            await safe_reply(interaction, "Open the birthday form again from the setup message.", ephemeral=True)
+        except discord.NotFound as e:
+            print("Birthday modal skipped; interaction is no longer valid:", repr(e))
+
+    @discord.ui.button(
+        label="❌Remove Birthday",
+        style=discord.ButtonStyle.danger,
+        custom_id="rematchhq:birthday:remove",
+    )
+    async def remove_birthday(self, interaction: discord.Interaction, _: discord.ui.Button):
+        try:
+            removed = await birthdays.delete_birthday(str(interaction.user.id))
+        except Exception as e:
+            print("Birthday remove failed:", repr(e))
+            await safe_reply(
+                interaction,
+                "Could not remove your birthday right now. Please try again in a bit.",
+                ephemeral=True,
+            )
+            return
+
+        if removed:
+            await safe_reply(interaction, "Your birthday has been removed.", ephemeral=True)
+        else:
+            await safe_reply(interaction, "You don’t have a birthday saved yet.", ephemeral=True)
+
+    @discord.ui.button(
+        label="📋List Birthdays",
+        style=discord.ButtonStyle.primary,
+        custom_id="rematchhq:birthday:list",
+    )
+    async def list_birthdays(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            rows = await birthdays.all_birthdays()
+        except Exception as e:
+            print("Birthday list failed:", repr(e))
+            await interaction.followup.send(
+                "Could not load registered birthdays right now. Please try again in a bit.",
+                ephemeral=True,
+            )
+            return
+
+        birthday_text = await _birthday_list_text(rows, interaction.guild)
+        birthday_file = discord.File(
+            io.BytesIO(birthday_text.encode("utf-8")),
+            filename="registered_birthdays.txt",
+        )
+        await interaction.followup.send(
+            "Attached the registered birthdays list.",
+            ephemeral=True,
+            file=birthday_file,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    @discord.ui.button(
+        label="🔔Ping Today's Birthday",
+        style=discord.ButtonStyle.secondary,
+        custom_id="rematchhq:birthday:force_ping",
+    )
+    async def force_birthday_ping(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild:
+            await safe_reply(interaction, "Run this in the server.", ephemeral=True)
+            return
+
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            try:
+                member = await interaction.guild.fetch_member(interaction.user.id)
+            except discord.NotFound:
+                await safe_reply(interaction, "Could not verify your permissions for this server.", ephemeral=True)
+                return
+
+        permissions = member.guild_permissions
+        if not (permissions.administrator or permissions.manage_guild):
+            await safe_reply(
+                interaction,
+                "You need **Administrator** or **Manage Server** permission to force birthday pings.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            announce_fn = getattr(interaction.client, "send_birthday_announcements_for_today", None)
+            if announce_fn is None:
+                raise RuntimeError("Birthday announcement function is not available.")
+            result = await announce_fn(force=True)
+        except Exception as e:
+            print("Force birthday ping failed:", repr(e))
+            await interaction.followup.send(
+                "Could not force today’s birthday ping. Check bot logs for details.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(result or "Birthday ping check finished.", ephemeral=True)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
+        print("BirthdaySetupView error:", repr(error))
         try:
             await safe_reply(interaction, "Something went wrong handling that button.", ephemeral=True)
         except discord.DiscordException:

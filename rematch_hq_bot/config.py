@@ -92,6 +92,8 @@ class ServerConfig:
     # GG channel (message counts for "Class of the Month").
     gg_channel_id: int | None = None
     emergency_pings_channel_id: int | None = None
+    birthdays_channel_id: int | None = None
+    birthdays_role_id: int | None = None
 
     # Minimum role ID - team roles will be positioned above this role.
     minimum_role_id: int | None = None
@@ -215,6 +217,8 @@ def _load_servers() -> dict[int, ServerConfig]:
                 compliments_ping_id=_as_int(block.get("COMPLIMENTS_PING_ID")),
                 gg_channel_id=_as_int(block.get("GG_CHANNEL_ID")),
                 emergency_pings_channel_id=_as_int(block.get("EMERGENCY_PINGS_CHANNEL_ID")),
+                birthdays_channel_id=_as_int(block.get("BIRTHDAYS_CHANNEL_ID")),
+                birthdays_role_id=_as_int(block.get("BIRTHDAYS_ROLE_ID")),
                 minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
                 tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
                 hall_of_fame_channel_id=_parse_int_or_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
@@ -243,6 +247,14 @@ def is_allowed_setup_channel(*, guild_id: int, channel_id: int) -> bool:
 
 
 SERVERS_BY_ID: dict[int, ServerConfig] = _load_servers()
+BIRTHDAYS_CHANNEL_ID = _as_int(os.getenv("BIRTHDAYS_CHANNEL_ID")) or next(
+    (cfg.birthdays_channel_id for cfg in SERVERS_BY_ID.values() if cfg.birthdays_channel_id is not None),
+    None,
+)
+BIRTHDAYS_ROLE_ID = _as_int(os.getenv("BIRTHDAYS_ROLE_ID")) or next(
+    (cfg.birthdays_role_id for cfg in SERVERS_BY_ID.values() if cfg.birthdays_role_id is not None),
+    None,
+)
 
 
 def _load_emergency_subs_roles() -> dict[str, int]:

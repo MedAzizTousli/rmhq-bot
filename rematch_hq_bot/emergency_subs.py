@@ -151,6 +151,10 @@ async def _get_pool() -> asyncpg.Pool:
     return _pool
 
 
+async def get_pool() -> asyncpg.Pool:
+    return await _get_pool()
+
+
 async def ensure_schema() -> None:
     global _schema_ready
     if _schema_ready:

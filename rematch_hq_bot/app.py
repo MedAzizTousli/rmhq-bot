@@ -20,9 +20,9 @@ if not hasattr(discord, "app_commands"):
         "  pip install -U discord.py"
     )
 
-from . import config
+from . import birthdays, config
 from . import emergency_subs
-from .views import EmergencyPlayersView, EmergencyTeamsView, SetupPartView, SetupView
+from .views import BirthdaySetupView, EmergencyPlayersView, EmergencyTeamsView, SetupPartView, SetupView
 
 
 class RematchHQBot(commands.Bot):
@@ -32,13 +32,17 @@ class RematchHQBot(commands.Bot):
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
         self._emergency_reset_task: asyncio.Task | None = None
+        self._birthday_announcement_task: asyncio.Task | None = None
+        self._birthday_role_lock = asyncio.Lock()
 
     async def setup_hook(self):
         self.add_view(SetupView())
         self.add_view(SetupPartView())
+        self.add_view(BirthdaySetupView())
         self.add_view(EmergencyPlayersView())
         self.add_view(EmergencyTeamsView())
         self._emergency_reset_task = asyncio.create_task(self._emergency_midnight_reset_loop())
+        self._birthday_announcement_task = asyncio.create_task(self._birthday_announcement_loop())
 
         if not config.SYNC_COMMANDS_ON_STARTUP:
             print("Skipping slash command sync (SYNC_COMMANDS_ON_STARTUP=0).")
@@ -95,6 +99,8 @@ class RematchHQBot(commands.Bot):
     async def close(self):
         if self._emergency_reset_task is not None:
             self._emergency_reset_task.cancel()
+        if self._birthday_announcement_task is not None:
+            self._birthday_announcement_task.cancel()
         await super().close()
 
     async def _emergency_midnight_reset_loop(self) -> None:
@@ -149,6 +155,191 @@ class RematchHQBot(commands.Bot):
 
         await emergency_subs.clearAllEmergencyRows()
         print(f"Emergency midnight reset: removed {removed} role assignment(s) and cleared DB rows.")
+
+    async def _birthday_announcement_loop(self) -> None:
+        await self.wait_until_ready()
+        tz = ZoneInfo("Europe/Paris")
+        startup_now = datetime.now(tz)
+        if startup_now.hour == 0 and startup_now.minute < 10:
+            try:
+                await self.send_birthday_announcements_for_today(force=False)
+            except Exception as e:
+                print("Birthday startup announcement check failed:", repr(e))
+
+        while not self.is_closed():
+            now = datetime.now(tz)
+            next_midnight = datetime(now.year, now.month, now.day, tzinfo=tz) + timedelta(days=1)
+            await asyncio.sleep(max(1.0, (next_midnight - now).total_seconds()))
+            try:
+                await self.send_birthday_announcements_for_today(force=False)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print("Birthday announcement check failed:", repr(e))
+
+    async def _clear_birthday_role_for_guild(self, guild: discord.Guild) -> None:
+        if config.BIRTHDAYS_ROLE_ID is None:
+            print("Birthday role clear skipped: missing BIRTHDAYS_ROLE_ID.")
+            return
+
+        role = guild.get_role(config.BIRTHDAYS_ROLE_ID)
+        if role is None:
+            print(f"Birthday role clear skipped: role {config.BIRTHDAYS_ROLE_ID} was not found in {guild.name}.")
+            return
+
+        async with self._birthday_role_lock:
+            removed = 0
+            try:
+                members = [member async for member in guild.fetch_members(limit=None)]
+            except discord.DiscordException:
+                members = list(guild.members)
+
+            for member in members:
+                if role not in getattr(member, "roles", []):
+                    continue
+                try:
+                    await member.remove_roles(role, reason="Birthday day expired")
+                    removed += 1
+                except discord.Forbidden:
+                    print(
+                        "Birthday role cleanup: missing permissions or role hierarchy prevents removing "
+                        f"role {role.id} from user {member.id}."
+                    )
+                except discord.HTTPException as e:
+                    print(
+                        "Birthday role cleanup: Discord API error removing "
+                        f"role {role.id} from user {member.id}: {e!r}"
+                    )
+            await birthdays.clear_role_assignments_for_guild_role(guild.id, role.id)
+            print(f"Birthday role cleanup: removed {removed} expired role assignment(s) in {guild.name}.")
+
+    async def send_birthday_announcements_for_today(self, *, force: bool = False) -> str:
+        if config.BIRTHDAYS_CHANNEL_ID is None:
+            msg = "Birthday announcement skipped: missing BIRTHDAYS_CHANNEL_ID."
+            print(msg)
+            return msg
+
+        tz = ZoneInfo("Europe/Paris")
+        today = datetime.now(tz).date()
+        date_text = today.isoformat()
+
+        channel = self.get_channel(config.BIRTHDAYS_CHANNEL_ID)
+        if channel is None:
+            channel = await self.fetch_channel(config.BIRTHDAYS_CHANNEL_ID)
+        if not hasattr(channel, "send"):
+            raise RuntimeError(f"Configured birthday channel is not sendable: {config.BIRTHDAYS_CHANNEL_ID}")
+        guild = getattr(channel, "guild", None)
+        if guild is None:
+            raise RuntimeError("Configured birthday channel is not in a server.")
+
+        todays_birthdays = await birthdays.birthdays_for(today.day, today.month)
+        print(f"Birthday announcement check for {date_text}: {len(todays_birthdays)} birthday row(s) found.")
+        if not todays_birthdays:
+            await self._clear_birthday_role_for_guild(guild)
+            msg = "Birthday announcement skipped: no birthdays today."
+            print(msg)
+            return msg
+
+        birthday_members: list[discord.Member] = []
+        removed_user_ids: list[str] = []
+        for birthday in todays_birthdays:
+            member = guild.get_member(int(birthday.user_id))
+            if member is None:
+                try:
+                    member = await guild.fetch_member(int(birthday.user_id))
+                except discord.NotFound:
+                    member = None
+                except discord.HTTPException as e:
+                    print(f"Birthday announcement: failed to fetch member {birthday.user_id}: {e!r}")
+                    member = None
+
+            if member is None:
+                removed_user_ids.append(birthday.user_id)
+            else:
+                birthday_members.append(member)
+
+        if removed_user_ids:
+            removed_count = await birthdays.delete_birthdays(removed_user_ids)
+            print(
+                "Birthday announcement: removed users who left server "
+                f"({removed_count} row(s)): {', '.join(removed_user_ids)}"
+            )
+
+        if not birthday_members:
+            await self._clear_birthday_role_for_guild(guild)
+            msg = "Birthday announcement skipped: no birthday users are still in the server."
+            print(msg)
+            return msg
+
+        if not force and not await birthdays.claim_announcement_date(date_text):
+            msg = f"Birthday announcement skipped: already sent for {date_text}."
+            print(msg)
+            return msg
+
+        try:
+            await self._clear_birthday_role_for_guild(guild)
+            await self._assign_birthday_roles(guild, birthday_members)
+            user_ids = [str(member.id) for member in birthday_members]
+            mentions = " ".join(f"<@{user_id}>" for user_id in user_ids)
+            message = await channel.send(
+                "# <:RMHQ:1474023595717165076> RMHQ — Happy Birthday!\n\n"
+                f"Today we’re celebrating {mentions} 🥳\n"
+                "Wishing you an amazing birthday filled with good vibes, great games, and unforgettable moments!\n\n"
+                "Thank you for being part of the RMHQ community — enjoy your day and make it a special one 👑",
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+            )
+            try:
+                await message.add_reaction("<:Birthday:1500165275008630925>")
+                await message.create_thread(name=self._birthday_thread_title(birthday_members))
+            except discord.DiscordException as e:
+                print("Birthday announcement post-send action failed:", repr(e))
+            msg = f"Birthday announcement sent for {date_text}: {', '.join(user_ids)}"
+            print(msg)
+            return msg
+        except Exception:
+            if not force:
+                await birthdays.release_announcement_date(date_text)
+            raise
+
+    async def _assign_birthday_roles(self, guild: discord.Guild, members: list[discord.Member]) -> None:
+        if config.BIRTHDAYS_ROLE_ID is None:
+            print("Birthday role skipped: missing BIRTHDAYS_ROLE_ID.")
+            return
+
+        role = guild.get_role(config.BIRTHDAYS_ROLE_ID)
+        if role is None:
+            print(f"Birthday role skipped: role {config.BIRTHDAYS_ROLE_ID} was not found in {guild.name}.")
+            return
+
+        tz = ZoneInfo("Europe/Paris")
+        now = datetime.now(tz)
+        remove_at = datetime(now.year, now.month, now.day, tzinfo=tz) + timedelta(days=1)
+        roles_added = 0
+        async with self._birthday_role_lock:
+            for member in members:
+                try:
+                    if role not in getattr(member, "roles", []):
+                        await member.add_roles(role, reason="Birthday announcement")
+                        roles_added += 1
+                    await birthdays.record_role_assignment(guild.id, member.id, role.id, remove_at)
+                except discord.Forbidden:
+                    print(
+                        "Birthday role add failed: missing permissions or role hierarchy prevents adding "
+                        f"{role.id} to {member.id}."
+                    )
+                except discord.HTTPException as e:
+                    print(f"Birthday role add failed for user {member.id}: {e!r}")
+        print(f"Birthday role assignment: added {roles_added} role(s), tracked {len(members)} member(s).")
+
+    def _birthday_thread_title(self, members: list[discord.Member]) -> str:
+        names: list[str] = []
+        for member in members:
+            name = member.display_name
+            safe_name = " ".join(str(name).replace("@", "").split())
+            names.append(f"@{safe_name or member.id}")
+
+        title = f"Happy birthday {' '.join(names)} 🎉"
+        return title if len(title) <= 100 else title[:97].rstrip() + "..."
 
 
 bot = RematchHQBot()
@@ -247,6 +438,37 @@ async def setup(interaction: discord.Interaction):
         color=0xbe629b,
     )
     await interaction.response.send_message(embed=embed, view=SetupView())
+
+
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
+@bot.tree.command(name="setup_birthday", description="Post the birthday registration panel", **_setup_kwargs)
+async def setup_birthday(interaction: discord.Interaction):
+    if not interaction.guild or not interaction.channel:
+        await interaction.response.send_message("Run this in the server.", ephemeral=True)
+        return
+
+    if not await _require_guild_administrator(interaction, interaction.guild):
+        return
+
+    if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+        server = config.server_for_guild_id(interaction.guild.id)
+        required = server.setup_channel_id if server else None
+        if required is not None:
+            await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+            return
+
+    embed = discord.Embed(
+        title="🎂 Birthdays",
+        description=(
+            "✅ **Add/Update Birthday:** Save or update your birthday.\n"
+            "❌ **Remove Birthday:** Delete your saved birthday.\n"
+            "📋 **List Birthdays:** Download the registered birthdays list.\n"
+            "🔔 **Ping Today's Birthday:** [Admin-only] Test/recovery birthday announcement."
+        ),
+        color=0xbe629b,
+    )
+    await interaction.response.send_message(embed=embed, view=BirthdaySetupView())
 
 
 @app_commands.default_permissions(administrator=True)
