@@ -122,15 +122,20 @@ class RematchHQBot(commands.Bot):
             except Exception as e:
                 print("Emergency midnight reset failed:", repr(e))
 
-    async def _reset_emergency_roles_and_rows(self) -> None:
+    async def _reset_emergency_roles_and_rows(self, guilds: list[discord.Guild] | None = None) -> None:
+        target_guilds = guilds or self.guilds
         role_ids = set(config.EMERGENCY_SUBS_ROLES.values())
         if not role_ids:
+            purged = await self._purge_emergency_ping_channels(target_guilds)
             await emergency_subs.clearAllEmergencyRows()
-            print("Emergency midnight reset: cleared DB rows; no emergency roles configured.")
+            print(
+                "Emergency midnight reset: cleared DB rows and purged "
+                f"{purged} emergency ping message(s); no emergency roles configured."
+            )
             return
 
         removed = 0
-        for guild in self.guilds:
+        for guild in target_guilds:
             roles = [role for role_id in role_ids if (role := guild.get_role(int(role_id))) is not None]
             if not roles:
                 continue
@@ -158,8 +163,59 @@ class RematchHQBot(commands.Bot):
                         f"from {member} in {guild.name}: {e!r}"
                     )
 
+        purged = await self._purge_emergency_ping_channels(target_guilds)
         await emergency_subs.clearAllEmergencyRows()
-        print(f"Emergency midnight reset: removed {removed} role assignment(s) and cleared DB rows.")
+        print(
+            "Emergency midnight reset: removed "
+            f"{removed} role assignment(s), purged {purged} emergency ping message(s), "
+            "and cleared DB rows."
+        )
+
+    async def _purge_emergency_ping_channels(self, guilds: list[discord.Guild] | None = None) -> int:
+        purged = 0
+        seen_channel_ids: set[int] = set()
+
+        for guild in guilds or self.guilds:
+            server = config.server_for_guild_id(guild.id)
+            channel_id = server.emergency_pings_channel_id if server else None
+            if channel_id is None or int(channel_id) in seen_channel_ids:
+                continue
+
+            seen_channel_ids.add(int(channel_id))
+            channel = guild.get_channel(int(channel_id))
+            if channel is None:
+                try:
+                    channel = await guild.fetch_channel(int(channel_id))
+                except discord.DiscordException as e:
+                    print(
+                        "Emergency midnight reset: couldn't find emergency pings channel "
+                        f"{channel_id} in {guild.name}: {e!r}"
+                    )
+                    continue
+
+            purge = getattr(channel, "purge", None)
+            if purge is None:
+                print(
+                    "Emergency midnight reset: emergency pings channel "
+                    f"{channel_id} in {guild.name} can't be purged."
+                )
+                continue
+
+            try:
+                deleted = await purge(limit=None, bulk=False, reason="Emergency sub daily reset")
+                purged += len(deleted)
+            except discord.Forbidden:
+                print(
+                    "Emergency midnight reset: missing permission to purge emergency pings channel "
+                    f"{channel_id} in {guild.name}."
+                )
+            except discord.HTTPException as e:
+                print(
+                    "Emergency midnight reset: failed to purge emergency pings channel "
+                    f"{channel_id} in {guild.name}: {e!r}"
+                )
+
+        return purged
 
     async def _birthday_announcement_loop(self) -> None:
         await self.wait_until_ready()
@@ -549,7 +605,8 @@ async def setup(interaction: discord.Interaction):
         title="Rematch HQ Setup",
         description=(
             "💖 **Compliment:** Tag someone to post a compliment.\n"
-            "📅 **Tournament Today:** Post today's tournaments.\n\n"
+            "📅 **Tournament Today:** Post today's tournaments.\n"
+            "🧹 **Purge Emergency:** [Admin-only] Manually reset emergency roles, rows, and pings.\n\n"
             "🏆 **Tournament Results:** Post the results of a tournament.\n\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 30).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"

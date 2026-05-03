@@ -5007,6 +5007,7 @@ class SetupView(discord.ui.View):
         ordered_first_row_ids = [
             "rematchhq:compliment",
             "rematchhq:tournament_today",
+            "rematchhq:emergency:purge",
         ]
 
         self.clear_items()
@@ -5269,6 +5270,52 @@ class SetupView(discord.ui.View):
                 preview_message_ids=preview_ids,
                 publish_fn=_publish,
             ),
+        )
+
+    @discord.ui.button(
+        label="Purge Emergency",
+        emoji="♻️",
+        style=discord.ButtonStyle.primary,
+        custom_id="rematchhq:emergency:purge",
+        row=0,
+    )
+    async def purge_emergency(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if not interaction.guild or not interaction.channel:
+            await interaction.response.send_message("Run this in the server.", ephemeral=True)
+            return
+
+        if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+            server = config.server_for_guild_id(interaction.guild.id)
+            required = server.setup_channel_id if server else None
+            if required is not None:
+                await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+                return
+
+        if not await _require_admin_or_manage_guild(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        reset_fn = getattr(interaction.client, "_reset_emergency_roles_and_rows", None)
+        if reset_fn is None:
+            await interaction.followup.send(
+                "Emergency purge is not available on this bot instance.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await reset_fn(guilds=[interaction.guild])
+        except Exception as e:
+            print("Manual emergency purge failed:", repr(e))
+            await interaction.followup.send(
+                "Emergency purge failed. Check bot logs for details.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(
+            "Emergency purge complete: roles, emergency rows, and emergency pings were reset.",
+            ephemeral=True,
         )
 
     @discord.ui.button(
