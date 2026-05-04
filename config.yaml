@@ -27,8 +27,8 @@ REMATCH_PART:
     ART: 1448081638931173500
     FRT: 1451978161318527068
   EMBED_COLOR:
-    PRT: 0x043949
-    ART: 0x210010
+    PRT: 0x20A4C2
+    ART: 0xC220B3
     FRT: 0xfcf3c5
   TOURNAMENT_INFO_CHANNEL_ID:
     PRT: 1463201095974129964
@@ -51,6 +51,25 @@ REMATCH_PART:
   LEADERBOARD_CHANNEL_ID:
     PRT: 1485140548837703710 # overall
     # PRT: 1481970996742197270 # weekly
+MODES:
+  DOUBLE_FORMAT:
+    FORMAT: Double Elimination - WB (BO3) | LB (BO1) | GF (BO5, +1 lead)
+    DURATION: 6 min (WB) | 8 min (LB)
+    OVERTIME: Infinite
+    MERCY_RULE: 4 goals
+    SWEEPER: No
+  SWISS_FORMAT:
+    FORMAT: Swiss Stage (BO1) → Top 4 → Playoffs Stage (BO5)
+    SWISS:
+      DURATION: 10 min
+      OVERTIME: No
+      MERCY_RULE: No
+      SWEEPER: No
+    PLAYOFFS:
+      DURATION: 6 min
+      OVERTIME: Infinite
+      MERCY_RULE: 4 goals
+      SWEEPER: No
 EMERGENCY_SUBS_ROLES:
   sub_goalkeeper: 1499687568999186602
   sub_last_man: 1499687606613577759

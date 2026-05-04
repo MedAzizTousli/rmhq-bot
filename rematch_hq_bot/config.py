@@ -167,7 +167,7 @@ def _parse_map_float(v) -> dict[str, float] | None:
     return out or None
 
 
-def _load_servers() -> dict[int, ServerConfig]:
+def _load_raw_config() -> dict:
     if not _CONFIG_YAML.exists():
         raise SystemExit(f"Missing config file: {_CONFIG_YAML}")
 
@@ -175,6 +175,18 @@ def _load_servers() -> dict[int, ServerConfig]:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
         raise SystemExit("Invalid config.yaml: expected a mapping at top-level.")
+    return raw
+
+
+def _load_modes(raw: dict) -> dict[str, object]:
+    modes = raw.get("MODES")
+    if not isinstance(modes, dict):
+        return {}
+    return {str(k).strip().upper(): v for k, v in modes.items() if str(k).strip()}
+
+
+def _load_servers() -> dict[int, ServerConfig]:
+    raw = _load_raw_config()
 
     servers: dict[int, ServerConfig] = {}
     for name, block in raw.items():
@@ -251,6 +263,7 @@ def is_allowed_setup_channel(*, guild_id: int, channel_id: int) -> bool:
 
 
 SERVERS_BY_ID: dict[int, ServerConfig] = _load_servers()
+TOURNAMENT_MODES: dict[str, object] = _load_modes(_load_raw_config())
 BIRTHDAYS_CHANNEL_ID = _as_int(os.getenv("BIRTHDAYS_CHANNEL_ID")) or next(
     (cfg.birthdays_channel_id for cfg in SERVERS_BY_ID.values() if cfg.birthdays_channel_id is not None),
     None,

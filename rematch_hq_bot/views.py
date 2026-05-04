@@ -56,6 +56,12 @@ _USD_TO_EUR = 0.85
 
 _RULEBOOK_URL = "https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
+_MATCH_SETTING_LABELS = (
+    ("DURATION", "Duration"),
+    ("OVERTIME", "Overtime"),
+    ("MERCY_RULE", "Mercy Rule"),
+    ("SWEEPER", "Sweeper"),
+)
 _LEADERBOARD_POINT_RANGES: list[tuple[int, int, int]] = [
     (1, 1, 100),
     (2, 2, 80),
@@ -102,6 +108,59 @@ def _truncate_text(text: str, limit: int) -> str:
     if len(normalized) <= limit:
         return normalized
     return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _config_display_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return str(value)
+
+
+def _match_settings_code_block(settings: object) -> str:
+    if not isinstance(settings, dict):
+        settings = {}
+
+    lines = []
+    for key, label in _MATCH_SETTING_LABELS:
+        value = settings.get(key)
+        if value is not None:
+            lines.append(f"{label}: {_config_display_value(value)}")
+
+    return "```" + ("\n".join(lines) if lines else "-") + "```"
+
+
+def _mode_config(mode: str) -> dict | None:
+    normalized = " ".join((mode or "").strip().upper().split())
+
+    if normalized == "DOUBLE":
+        mode_config = config.TOURNAMENT_MODES.get("DOUBLE_FORMAT")
+    elif normalized == "SWISS":
+        mode_config = config.TOURNAMENT_MODES.get("SWISS_FORMAT")
+    else:
+        return None
+
+    return mode_config if isinstance(mode_config, dict) else {}
+
+
+def _format_for_mode(mode_config: dict) -> str:
+    format_value = mode_config.get("FORMAT")
+    if format_value is not None:
+        return _config_display_value(format_value)
+    return "-"
+
+
+def _match_settings_for_mode(mode: str, mode_config: dict) -> str:
+    normalized = " ".join((mode or "").strip().upper().split())
+
+    if normalized == "SWISS":
+        return (
+            "__Swiss Stage__\n"
+            f"{_match_settings_code_block(mode_config.get('SWISS'))}\n"
+            "__Playoffs Stage__\n"
+            f"{_match_settings_code_block(mode_config.get('PLAYOFFS'))}"
+        )
+
+    return _match_settings_code_block(mode_config)
 
 
 def _poll_media_text(media: object) -> str:
@@ -2793,6 +2852,12 @@ class TournamentInfoModal(discord.ui.Modal):
         required=True,
         max_length=80,
     )
+    tournament_mode = discord.ui.TextInput(
+        label="Tournament mode",
+        placeholder="DOUBLE or SWISS",
+        required=True,
+        max_length=20,
+    )
     prize_pool_input = discord.ui.TextInput(
         label="Prize pool",
         placeholder="e.g. 50€ (leave blank to use default)",
@@ -2808,6 +2873,16 @@ class TournamentInfoModal(discord.ui.Modal):
         t_name = " ".join((self.tournament_name.value or "").strip().split())
         t_url = (self.battlefy_url.value or "").strip()
         when = _to_discord_timestamp(self.date_time.value or "")
+        tournament_mode = (self.tournament_mode.value or "").strip()
+        mode_config = _mode_config(tournament_mode)
+        if mode_config is None:
+            await interaction.response.send_message(
+                "Tournament mode must be `DOUBLE` or `SWISS`.",
+                ephemeral=True,
+            )
+            return
+        format_value = _format_for_mode(mode_config)
+        match_settings = _match_settings_for_mode(tournament_mode, mode_config)
         prize_pool_raw = " ".join((self.prize_pool_input.value or "").strip().split())
 
         if not interaction.guild:
@@ -2860,25 +2935,12 @@ class TournamentInfoModal(discord.ui.Modal):
         )
         embed.add_field(
             name="Format",
-            value=(
-                "Double Elimination Bracket\n"
-                "__Winners Bracket__: BO3\n"
-                "__Losers Bracket__: BO1\n"
-                "__Grand Final__: BO5 with a 1-game advantage for the Winners Bracket team"
-            ),
+            value=format_value,
             inline=False,
         )
         embed.add_field(
             name="Match Settings",
-            value=(
-                "```"
-                "Match duration: 6 min (WB) | 8 min (LB)\n"
-                "Overtime max duration: Infinite\n"
-                "Score to reach: 0\n"
-                "Mercy rule goal difference: 4\n"
-                "Enable goal sweeper: No"
-                "```"
-            ),
+            value=match_settings,
             inline=False,
         )
 
