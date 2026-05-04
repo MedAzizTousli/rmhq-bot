@@ -13,20 +13,6 @@ Overdozee:
   - Ukraine: 463701530571440129
   - Portugal: 301758491545174026
   - Morocco: 447228106546216970
-Astra:
-  discord: https://discord.gg/astra-esports
-  colors:
-  - 0xD22F2D
-  - 0xFFFFFF
-  roster:
-  - France: 334961422754643970
-  - England: 361518631374290944
-  - Morocco: 122858455945052160
-  - France: 581783342542749708
-  - Hungary: 1114804828489658399
-  support:
-  - England: 306569760630374402
-  - Germany: 707348814587232285
 Kin:
   discord: https://discord.gg/JTafnxuPHb
   colors:
@@ -34,6 +20,7 @@ Kin:
   - 0xFEFEFE
   roster:
   - France: 1150348320649265212
+  - France: 201738813297393664
   - France: 556199084587876383
   - France: 564843719644413959
   - Italy: 1273732255730110516
@@ -55,6 +42,19 @@ Volare:
   - Palestine: 177197640654520332
   - Morocco: 325111622140166146
   - Italy: 826190187536842823
+Astra:
+  discord: https://discord.gg/astra-esports
+  colors:
+  - 0xD22F2D
+  - 0xFFFFFF
+  roster:
+  - France: 334961422754643970
+  - England: 361518631374290944
+  - France: 581783342542749708
+  - Hungary: 1114804828489658399
+  support:
+  - England: 306569760630374402
+  - Germany: 707348814587232285
 Overdozee CIS:
   discord: https://discord.gg/overdozee
   colors:
@@ -68,24 +68,28 @@ Overdozee CIS:
   - Belarus: 455043215666446339
   support:
   - Ukraine: 463701530571440129
-Wildcats:
-  discord: https://discord.gg/jCxW3QA5Jh
+Team Moirai:
+  discord: https://discord.gg/MntduX7EaG
   colors:
-  - 0x9A8C81
-  - 0x484347
+  - 0xECD380
+  - 0xFFFFFF
   roster:
-  - Serbia: 756565389390905355
-  - Italy: 529306299893153823
-  - Bulgaria: 433104649969467393
-  - Poland: 273909057356693507
-  - Denmark: 157978056621948928
+  - Italy: 1151207345901277184
+  - Italy: 923209298920738837
+  - Spain: 454270124807946265
+  - Italy: 775755060880867328
+  - Egypt: 532094137973997571
   support:
-  - England: 228652928863305728
-Drain Cats:
-  discord: https://discord.gg/tebJefYHQC
+  - Germany: 484755311450914816
+  - Germany: 388384865701330944
+  - Germany: 390838602151493633
+  - Germany: 275999629353418752
+  - Germany: 299180766410309632
+Astra CIS:
+  discord: https://discord.gg/astra-esports
   colors: 
-  - 0xFBEAC1
-  - 0x5E4E2F
+  - 0xD22F2D
+  - 0xFFFFFF
   roster:
   - Russia: 575227571810074625
   - Ukraine: 236139910728384512
@@ -93,21 +97,20 @@ Drain Cats:
   - Russia: 339811734795583499
   - Belarus: 400627149444349952
   support:
+  - England: 306569760630374402
   - Russia: 611922457884098561
   - Ukraine: 930174450056450108
-Str1ve Esports:
-  discord: https://discord.gg/vUvVppNCBv
+Reborn Xi:
+  discord: https://discord.gg/dQZBJysaPP
   colors:
-  - 0xFFFFFF
-  - 0x000000
+  - 0xEF4923
+  - 0x052945
   roster:
-  - Saudi Arabia: 706563187692273745
-  - Portugal: 97139768399245312
-  - Portugal: 569643066940719124
-  - Portugal: 260051205634523137
-  - Portugal: 381672095916228610
+  - Spain: 509766402199126016
+  - Turkey: 788721111491280896
+  - Turkey: 852809086760124416
+  - Spain: 510846984689680415
+  - Turkey: 485470983356940288
   support:
-  - Portugal: 590914574493155351
-  - Saudi Arabia: 630066810036813855
-  - Spain: 370987628973129738
-  - Portugal: 598935287749672960
+  - Turkey: 412972676873977860
+  - Spain: 663333354338517006

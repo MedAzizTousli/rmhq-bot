@@ -104,9 +104,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ΔX x MIST": "Mist",
     "VTD": "Virtual Dragons",
     "EOZ": "EOZ Ultima",
-    "Madness": "DeltaX Madness",
-    "∆X x Madness": "DeltaX Madness",
-    "ΔX x Madness": "DeltaX Madness",
+    "∆X x Madness": "Madness",
+    "ΔX x Madness": "Madness",
     "RandomCats": "wildcats",
     "mini PEKKA-1": "mini PEKKA",
     "DX x MIST": "Mist",
@@ -125,7 +124,11 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴍᴏɴᴀᴄᴏ x Aᵧ LAST DANCE": "Monaco x AY",
     "DSQ": "DSQ Esports",
     "VEX": "DSQ Esports",
-    "Abaraka Never": "After Hours"
+    "Abaraka Never": "After Hours",
+    "After Hours": "Anarchy",
+    "DeltaX Madness": "Madness",
+    "DX x Madness": "Madness",
+    "Drain Cats": "ASTRA CIS"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -143,7 +146,6 @@ DISBANDED_TEAMS: list[str] = [
     "Dual Esports",
     "we need name",
     "SPARTA",
-    "1Motive",
     "Origin Ascend",
     "NoLimits eSports",
     "Seraphim",
@@ -156,7 +158,8 @@ DISBANDED_TEAMS: list[str] = [
     "Bloody V",
     "PASTEL DE NATA",
     "Better Call Saul",
-    "Monaco x AY"
+    "Monaco x AY",
+    "wildcats"
 ]
 
 def normalize_name(name: str) -> str:
