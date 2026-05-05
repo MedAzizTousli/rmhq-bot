@@ -59,7 +59,7 @@ MODES:
     MERCY_RULE: 4 goals
     SWEEPER: No
   SWISS_FORMAT:
-    FORMAT: Swiss Stage (BO1) → Top 4 → Playoffs Stage (BO5)
+    FORMAT: Swiss Stage (BO1) → Top 8 → Playoffs Stage (BO5)
     SWISS:
       DURATION: 10 min
       OVERTIME: No

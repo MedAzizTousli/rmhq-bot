@@ -128,7 +128,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "After Hours": "Anarchy",
     "DeltaX Madness": "Madness",
     "DX x Madness": "Madness",
-    "Drain Cats": "ASTRA CIS"
+    "Drain Cats": "ASTRA CIS",
+    "Saviors": "xanax"
 }
 
 DISBANDED_TEAMS: list[str] = [
