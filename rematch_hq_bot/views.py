@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import random
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import discord
@@ -108,6 +109,25 @@ def _truncate_text(text: str, limit: int) -> str:
     if len(normalized) <= limit:
         return normalized
     return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _tournament_link_value(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return "-"
+
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if not host and parsed.path:
+        host = parsed.path.split("/", 1)[0].lower()
+
+    label = "URL"
+    if "battlefy.com" in host:
+        label = "Battlefy"
+    elif host == "start.gg" or host.endswith(".start.gg"):
+        label = "StartGG"
+
+    return f"[{label}]({url})"
 
 
 def _config_display_value(value: object) -> str:
@@ -2841,8 +2861,8 @@ class TournamentInfoModal(discord.ui.Modal):
         max_length=100,
     )
     battlefy_url = discord.ui.TextInput(
-        label="Battlefy URL",
-        placeholder="https://battlefy.com/...",
+        label="Tournament URL",
+        placeholder="https://battlefy.com/... or https://start.gg/...",
         required=True,
         max_length=200,
     )
@@ -2919,8 +2939,8 @@ class TournamentInfoModal(discord.ui.Modal):
             prize_pool_display = f"{default_prize_pool:g}€"
 
         embed = discord.Embed(title=t_name or "Tournament", color=int(color))
-        # Row 1 (inline): Battlefy | Rules | Fees & Rewards
-        embed.add_field(name="Battlefy", value=f"[URL]({t_url})" if t_url else "-", inline=True)
+        # Row 1 (inline): Tournament | Rules | Fees & Rewards
+        embed.add_field(name="Tournament", value=_tournament_link_value(t_url), inline=True)
         embed.add_field(name="Rules", value=f"[URL]({_RULEBOOK_URL})", inline=True)
         embed.add_field(
             name="Fees & Rewards",
@@ -3002,8 +3022,8 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         max_length=10,
     )
     battlefy_url = discord.ui.TextInput(
-        label="Battlefy URL",
-        placeholder="https://battlefy.com/...",
+        label="Tournament URL",
+        placeholder="https://battlefy.com/... or https://start.gg/...",
         required=True,
         max_length=200,
     )
@@ -3073,7 +3093,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
 
         embed = discord.Embed(title=f"FRT #{edition}", color=int(color))
-        embed.add_field(name="Battlefy", value=f"[URL]({t_url})" if t_url else "-", inline=True)
+        embed.add_field(name="Tournament", value=_tournament_link_value(t_url), inline=True)
         embed.add_field(name="Entry Fee", value="0€", inline=True)
         embed.add_field(name="Prize Pool", value="0€", inline=True)
         embed.add_field(

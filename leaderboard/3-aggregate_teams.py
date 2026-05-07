@@ -129,7 +129,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "DeltaX Madness": "Madness",
     "DX x Madness": "Madness",
     "Drain Cats": "ASTRA CIS",
-    "Saviors": "xanax"
+    "Saviors": "xanax",
+    "PEKKA": "MOIRAI CIS"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -160,7 +161,8 @@ DISBANDED_TEAMS: list[str] = [
     "PASTEL DE NATA",
     "Better Call Saul",
     "Monaco x AY",
-    "wildcats"
+    "wildcats",
+    "Meow Fc"
 ]
 
 def normalize_name(name: str) -> str:
