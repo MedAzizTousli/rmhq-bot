@@ -63,7 +63,7 @@ MODES:
     SWISS:
       DURATION: 12 min
       OVERTIME: No
-      MERCY_RULE: No
+      MERCY_RULE: 6 goals
       SWEEPER: No
     PLAYOFFS:
       DURATION: 6 min
