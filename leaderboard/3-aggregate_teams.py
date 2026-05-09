@@ -55,7 +55,6 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴬⁿᵃʳᶜʰʸ": "Anarchy",
     "MKT NOVA": "InFeriX Esports",
     "RΞFLEX FC": "REFLEX FC",
-    "Golden Requiem": "HAKI",
     "SCATTER.": "Team MOIRAI",
     "Playing-Ducks": "Team MOIRAI",
     "PlayingDucksᴿᴹ": "Team MOIRAI",
@@ -97,7 +96,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Karma": "Beneath Reality",
     "Delusion Esports": "Death Cloud Esports",
     "Classic X": "Classic V",
-    "Exotic Raccoons": "Anarchy Raccoons",
+    "Anarchy Raccoons": "Exotic Raccoons",
     "𝐁𝐄𝐍𝐄𝐀𝐓𝐇 𝐑𝐄𝐀𝐋𝐈𝐓𝐘": "Beneath Reality",
     "EON x FLR": "EON Esports",
     "EON": "EON Esports",
@@ -124,13 +123,26 @@ TEAM_NAME_MAP: dict[str, str] = {
     "ᴍᴏɴᴀᴄᴏ x Aᵧ LAST DANCE": "Monaco x AY",
     "DSQ": "DSQ Esports",
     "VEX": "DSQ Esports",
-    "Abaraka Never": "After Hours",
+    "Abaraka Never": "Anarchy",
     "After Hours": "Anarchy",
     "DeltaX Madness": "Madness",
     "DX x Madness": "Madness",
-    "Drain Cats": "ASTRA CIS",
+    "ASTRA CIS": "Drain Cats",
     "Saviors": "xanax",
-    "PEKKA": "MOIRAI CIS"
+    "PEKKA": "MOIRAI CIS",
+    "barsik": "Ivory Mantis",
+    "DeltaX": "DeltaX Black Swans",
+    "Haki": "DeltaX Golden Requiem",
+    "Golden Requiem": "DeltaX Golden Requiem",
+    "Bella Frocius": "Focus",
+    "X5": "Dark Instinct",
+    "∆X Black Swans": "DeltaX Black Swans",
+    "ΔX x Black Swans": "DeltaX Black Swans",
+    "xaиax": "xanax",
+    "El Toreador Comeback": "Orion Esports",
+    "Team RXM": "RXM",
+    "Reborn Xi Tryout": "Reborn Xi",
+    "Dick Riders": "Kill-Streak Monkey"
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -162,7 +174,8 @@ DISBANDED_TEAMS: list[str] = [
     "Better Call Saul",
     "Monaco x AY",
     "wildcats",
-    "Meow Fc"
+    "Meow Fc",
+    "ASTRA"
 ]
 
 def normalize_name(name: str) -> str:

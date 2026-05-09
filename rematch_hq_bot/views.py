@@ -54,6 +54,7 @@ _PREDICTIONS_CSV = _REPO_ROOT / "leaderboard" / "output" / "predictions.csv"
 _PREDICTION_FIELDNAMES = ("poll_date", "message_id", "question", "winning_answer", "all_people", "right_people")
 _PRIZE_POOL_PLACEMENTS = ("1st", "2nd", "3rd", "4th")
 _USD_TO_EUR = 0.85
+_GBP_TO_EUR = 1.15
 
 _RULEBOOK_URL = "https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
@@ -402,6 +403,8 @@ def _parse_prize_to_eur(raw: str) -> float | None:
 
     if "$" in text:
         amount *= _USD_TO_EUR
+    elif "£" in text or re.search(r"\b(?:gbp|pounds?)\b", text, re.IGNORECASE):
+        amount *= _GBP_TO_EUR
     return round(amount, 2)
 
 
@@ -685,7 +688,7 @@ def _build_earnings_embed(
     embed.add_field(name="Rank", value="\n".join(ranks), inline=True)
     embed.add_field(name=name_field, value="\n".join(names), inline=True)
     embed.add_field(name="Earnings", value="\n".join(earnings), inline=True)
-    embed.set_footer(text="Prize values converted to euros. Conversion rate: $1 = €0.85.")
+    embed.set_footer(text="Prize values converted to euros. Conversion rates: $1 = €0.85, £1 = €1.15.")
     return embed
 
 
