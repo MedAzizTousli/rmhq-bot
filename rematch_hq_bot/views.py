@@ -56,7 +56,6 @@ _PRIZE_POOL_PLACEMENTS = ("1st", "2nd", "3rd", "4th")
 _USD_TO_EUR = 0.85
 _GBP_TO_EUR = 1.15
 
-_RULEBOOK_URL = "https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a?source=copy_link"
 _FRT_RULES_URL = "https://discord.com/channels/1451978161318527068/1454676450631356550"
 _MATCH_SETTING_LABELS = (
     ("DURATION", "Duration"),
@@ -157,6 +156,8 @@ def _mode_config(mode: str) -> dict | None:
         mode_config = config.TOURNAMENT_MODES.get("DOUBLE_FORMAT")
     elif normalized == "SWISS":
         mode_config = config.TOURNAMENT_MODES.get("SWISS_FORMAT")
+    elif normalized in {"1V1", "1V1_FORMAT"}:
+        mode_config = config.TOURNAMENT_MODES.get("1V1_FORMAT")
     else:
         return None
 
@@ -1522,11 +1523,11 @@ def _find_guild_emoji_by_name(guild: discord.Guild, name: str) -> str:
 
 def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | None = None) -> list[str]:
     """
-    Return available tournament type codes (e.g. ["PRT", "ART"]).
+    Return available tournament type codes (e.g. ["PRT", "ART", "SRT"]).
     If require_key is set, only return types present in that mapping.
-    Falls back to ["PRT", "ART"] if nothing is configured.
+    Falls back to the preferred configured tournament types if nothing is configured.
     """
-    preferred = ["PRT", "ART", "FRT"]
+    preferred = ["PRT", "ART", "FRT", "SRT"]
     mapping = None
     if require_key == "tournament_info_channel_id":
         mapping = server.tournament_info_channel_id
@@ -1544,8 +1545,18 @@ def _pick_tournament_types(server: config.ServerConfig, *, require_key: str | No
     return preferred
 
 
+def _rules_url_for_type(server: config.ServerConfig, tournament_type: str) -> str | None:
+    ttype = (tournament_type or "").strip().upper()
+    rules_url = (server.rules_url or {}).get(ttype)
+    if rules_url:
+        return rules_url
+    if ttype == "FRT":
+        return _FRT_RULES_URL
+    return None
+
+
 def _hall_of_fame_channel_id_resolved(server: config.ServerConfig) -> int | None:
-    """Scalar Hall of Fame channel, or first configured type (PRT → ART → FRT) when stored as a map."""
+    """Scalar Hall of Fame channel, or first configured preferred type when stored as a map."""
     cid = _hall_of_fame_channel_id(server)
     if cid is not None:
         return int(cid)
@@ -2877,7 +2888,7 @@ class TournamentInfoModal(discord.ui.Modal):
     )
     tournament_mode = discord.ui.TextInput(
         label="Tournament mode",
-        placeholder="DOUBLE or SWISS",
+        placeholder="DOUBLE, SWISS, or 1V1",
         required=True,
         max_length=20,
     )
@@ -2900,7 +2911,7 @@ class TournamentInfoModal(discord.ui.Modal):
         mode_config = _mode_config(tournament_mode)
         if mode_config is None:
             await interaction.response.send_message(
-                "Tournament mode must be `DOUBLE` or `SWISS`.",
+                "Tournament mode must be `DOUBLE`, `SWISS`, or `1V1`.",
                 ephemeral=True,
             )
             return
@@ -2940,11 +2951,12 @@ class TournamentInfoModal(discord.ui.Modal):
             prize_pool_display = prize_pool_raw
         else:
             prize_pool_display = f"{default_prize_pool:g}€"
+        rules_url = _rules_url_for_type(server, ttype)
 
         embed = discord.Embed(title=t_name or "Tournament", color=int(color))
         # Row 1 (inline): Tournament | Rules | Fees & Rewards
         embed.add_field(name="Tournament", value=_tournament_link_value(t_url), inline=True)
-        embed.add_field(name="Rules", value=f"[URL]({_RULEBOOK_URL})", inline=True)
+        embed.add_field(name="Rules", value=f"[URL]({rules_url})" if rules_url else "-", inline=True)
         embed.add_field(
             name="Fees & Rewards",
             value=f"__Entry Fee__: 0€\n__Prize Pool__: {prize_pool_display}",
@@ -3094,6 +3106,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         await interaction.response.defer(ephemeral=True)
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
+        rules_url = _rules_url_for_type(server, ttype)
 
         embed = discord.Embed(title=f"FRT #{edition}", color=int(color))
         embed.add_field(name="Tournament", value=_tournament_link_value(t_url), inline=True)
@@ -3106,7 +3119,7 @@ class FRTTournamentInfoModal(discord.ui.Modal):
         )
         embed.add_field(
             name="Mode",
-            value=f"{mode_val} — [Rules]({_FRT_RULES_URL})",
+            value=f"{mode_val} — [Rules]({rules_url})" if rules_url else mode_val,
             inline=False,
         )
         embed.add_field(name="Format", value=format_val, inline=False)

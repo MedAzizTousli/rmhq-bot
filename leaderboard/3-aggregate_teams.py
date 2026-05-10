@@ -134,7 +134,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "DeltaX": "DeltaX Black Swans",
     "Haki": "DeltaX Golden Requiem",
     "Golden Requiem": "DeltaX Golden Requiem",
-    "Bella Frocius": "Focus",
+    "Focus": "Bella Frocius",
     "X5": "Dark Instinct",
     "∆X Black Swans": "DeltaX Black Swans",
     "ΔX x Black Swans": "DeltaX Black Swans",

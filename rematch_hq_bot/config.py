@@ -106,6 +106,7 @@ class ServerConfig:
     sponsors_channel_id: dict[str, int] | None = None
     embed_color: dict[str, int] | None = None
     prize_pool: dict[str, float] | None = None
+    rules_url: dict[str, str] | None = None
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -164,6 +165,20 @@ def _parse_map_float(v) -> dict[str, float] | None:
             out[key] = float(raw_val)
         except (TypeError, ValueError):
             continue
+    return out or None
+
+
+def _parse_map_str(v) -> dict[str, str] | None:
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        return None
+    out: dict[str, str] = {}
+    for k, raw_val in v.items():
+        key = str(k).strip().upper()
+        val = str(raw_val or "").strip()
+        if key and val:
+            out[key] = val
     return out or None
 
 
@@ -241,6 +256,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 sponsors_channel_id=_parse_map_int(block.get("SPONSORS_CHANNEL_ID")),
                 embed_color=_parse_map_int(block.get("EMBED_COLOR")),
                 prize_pool=_parse_map_float(block.get("PRIZE_POOL")),
+                rules_url=_parse_map_str(block.get("RULES")),
             )
             servers[server_id] = cfg
 
