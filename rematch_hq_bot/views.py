@@ -6014,6 +6014,36 @@ class SetupView(discord.ui.View):
             await interaction.followup.send("The compliments channel does not support permission overwrites.", ephemeral=True)
             return
 
+        history = getattr(compliments_channel, "history", None)
+        if not callable(history):
+            await interaction.followup.send("The compliments channel does not support message history.", ephemeral=True)
+            return
+
+        member_ids = {member.id for member in members}
+        commented_member_ids: set[int] = set()
+        try:
+            async for message in history(limit=None):
+                author = getattr(message, "author", None)
+                if getattr(author, "bot", False):
+                    continue
+                author_id = getattr(author, "id", None)
+                if author_id in member_ids:
+                    commented_member_ids.add(author_id)
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "I couldn't read the compliments channel history to find who already commented.",
+                ephemeral=True,
+            )
+            return
+
+        eligible_members = [member for member in members if member.id not in commented_member_ids]
+        if not eligible_members:
+            await interaction.followup.send(
+                "Everyone I can pick has already commented in the compliments channel.",
+                ephemeral=True,
+            )
+            return
+
         chosen: discord.Member | None = None
 
         def _render_content(member: discord.Member) -> str:
@@ -6025,9 +6055,9 @@ class SetupView(discord.ui.View):
         async def _post_preview(*, exclude_member_id: int | None = None) -> tuple[list[int], str]:
             nonlocal chosen
 
-            candidates = [m for m in members if exclude_member_id is None or m.id != exclude_member_id]
+            candidates = [m for m in eligible_members if exclude_member_id is None or m.id != exclude_member_id]
             if not candidates:
-                candidates = list(members)
+                candidates = list(eligible_members)
             if not candidates:
                 raise RuntimeError("Couldn't find any non-bot members to compliment.")
 
