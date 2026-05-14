@@ -142,7 +142,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "El Toreador Comeback": "Orion Esports",
     "Team RXM": "RXM",
     "Reborn Xi Tryout": "Reborn Xi",
-    "Dick Riders": "Kill-Streak Monkey"
+    "Dick Riders": "Kill-Streak Monkey",
+    "Aziz clock": "aziz show clock"
 }
 
 DISBANDED_TEAMS: list[str] = [

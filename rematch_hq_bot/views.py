@@ -1731,6 +1731,7 @@ def _format_leaderboard_embed(
     date_range: str | None = None,
     *,
     movement_by_team: dict[str, str] | None = None,
+    color: int = 0xbe629b,
 ) -> discord.Embed:
     """
     Build an embed with 3 columns:
@@ -1796,7 +1797,7 @@ def _format_leaderboard_embed(
     else:
         title = "Leaderboard"
 
-    e = discord.Embed(title=title, color=0xbe629b)
+    e = discord.Embed(title=title, color=color)
     e.add_field(name="Placement", value="\n".join(placement_vals) or "-", inline=True)
     e.add_field(name="Team", value="\n".join(team_vals) or "-", inline=True)
     e.add_field(name="Points", value="\n".join(points_vals) or "-", inline=True)
@@ -3831,8 +3832,9 @@ class PartLeaderboardModal(discord.ui.Modal):
             await interaction.followup.send("No valid teams found in the PART leaderboard CSVs.", ephemeral=True)
             return
 
-        top = sorted(rows, key=lambda r: (-int(r.get("Points", "0") or "0"), (r.get("Team") or "").casefold()))[:30]
-        embed = _format_leaderboard_embed(top, date_range=date_range)
+        top = sorted(rows, key=lambda r: (-int(r.get("Points", "0") or "0"), (r.get("Team") or "").casefold()))[:48]
+        leaderboard_color = (server.embed_color or {}).get(ttype, 0xbe629b)
+        embed = _format_leaderboard_embed(top, date_range=date_range, color=leaderboard_color)
 
         leaderboard_channel_id = _leaderboard_channel_id(server, tournament_type=ttype)
         if not leaderboard_channel_id:
