@@ -58,8 +58,8 @@ REMATCH_PART:
     ART: https://aziz-rematch.notion.site/PART-Rules-337037d9654180a485f0dc5713ea535a
     SRT: https://aziz-rematch.notion.site/SRT-Rules-35c037d96541808e8cfdf665685f9ec0
   LEADERBOARD_CHANNEL_ID:
-    # PRT: 1503066823057346581 # overall
-    PRT: 1503066862957756476 # weekly
+    PRT: 1503066823057346581 # overall
+    # PRT: 1503066862957756476 # weekly
 MODES:
   DOUBLE_FORMAT:
     FORMAT: Double Elimination - WB (BO3) | LB (BO1) | GF (BO5, +1 lead)
