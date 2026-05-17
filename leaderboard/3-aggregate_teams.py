@@ -143,7 +143,9 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Team RXM": "RXM",
     "Reborn Xi Tryout": "Reborn Xi",
     "Dick Riders": "Kill-Streak Monkey",
-    "Aziz clock": "aziz show clock"
+    "Aziz clock": "aziz show clock",
+    "WWLUGAN$K": "WWLUGANSK",
+    "ΔX Golden Requiem": "DeltaX Golden Requiem",
 }
 
 DISBANDED_TEAMS: list[str] = [
@@ -176,7 +178,8 @@ DISBANDED_TEAMS: list[str] = [
     "Monaco x AY",
     "wildcats",
     "Meow Fc",
-    "ASTRA"
+    "ASTRA",
+    "Drain Cats"
 ]
 
 def normalize_name(name: str) -> str:

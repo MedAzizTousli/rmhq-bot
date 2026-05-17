@@ -605,8 +605,7 @@ async def setup(interaction: discord.Interaction):
         title="Rematch HQ Setup",
         description=(
             "💖 **Compliment:** Tag someone to post a compliment.\n"
-            "📅 **Tournament Today:** Post today's tournaments.\n"
-            "🧹 **Purge Emergency:** [Admin-only] Manually reset emergency roles, rows, and pings.\n\n"
+            "📅 **Tournament Today:** Post today's tournaments.\n\n"
             "🏆 **Tournament Results:** Post the results of a tournament.\n\n"
             "📊 **Leaderboard:** Post the current leaderboard (top 30).\n"
             "👑 **Rosters:** Post the current rosters (top 8).\n"
