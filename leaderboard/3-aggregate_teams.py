@@ -179,7 +179,12 @@ DISBANDED_TEAMS: list[str] = [
     "wildcats",
     "Meow Fc",
     "ASTRA",
-    "Drain Cats"
+    "Drain Cats",
+    "Galactic Baboons",
+    "Bella Frocius",
+    "Goal Digger",
+    "Kill-Streak Monkey",
+    "Midnight"
 ]
 
 def normalize_name(name: str) -> str:

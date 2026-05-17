@@ -36,94 +36,89 @@ Rank,Team,Points
 35,Onryo,269.40
 36,EON Esports,253.40
 37,ACE,246.40
-38,Bella Frocius,240.00
-39–40,Jinga,235.80
-39–40,Kali's minions,235.80
-41,TRIPLE SIX,213.40
-42,SUSLIK TEAM,213.20
-43,Brussels JK,186.10
-44–45,Blind Owls,184.00
-44–45,OverProdigy,184.00
-46,Exode,168.20
-47,Anarchy Mayhem,167.80
-48,Velzar,164.80
-49,mini PEKKA,155.40
-50,Aedern,139.40
-51,Insomnia,133.40
-52,F5 Black,120.80
-53,EKM,105.00
-54–55,Desire,104.80
-54–55,𝔻𝕚𝕔𝕥𝕒𝕥𝕠𝕣𝕤,104.80
-56,Galactic Baboons,101.00
-57,Ravens,96.40
-58,EDEN,95.00
-59,Goal Digger,89.00
-60,WildCard,88.40
-61,The Old Firm,88.00
-62,Kill-Streak Monkey,84.00
-63,RXM,66.00
-64,Tasty Crousty FC,65.00
-65,Death Cloud Esports,62.00
-66,Young Bastards Club,61.10
-67,VALHALLA,60.40
-68,Shamrock FC,60.00
-69,5WLAN,59.40
-70–71,FRAUDES,57.00
-70–71,Midnight,57.00
-72–73,SOLID,56.00
-72–73,Totally spies,56.00
-74–76,False 5 Blue,52.40
-74–76,Infinite,52.40
-74–76,PXG,52.40
-77,InFeriX Esports,52.00
-78,TENRYU,49.10
-79,Bluelock,46.00
-80,Anarchy,38.00
-81,Mysteries Of Bangladesh,36.00
-82,VOLT Guardian Owls,32.00
-83–94,3m braa wa ele ho Zman a7na l3eebh,28.00
-83–94,Classic V,28.00
-83–94,DISCIPLINE,28.00
-83–94,False 5 Black,28.00
-83–94,LA Ñ,28.00
-83–94,OBLIVION,28.00
-83–94,STRIVE NA,28.00
-83–94,The Night Owls,28.00
-83–94,The Simpson,28.00
-83–94,Void Walkers,28.00
-83–94,YOSHI,28.00
-83–94,Zigotos,28.00
-95,La Pasión,25.00
-96,Lotus,20.00
-97–99,Brussels JK Black,19.00
-97–99,JabberWock,19.00
-97–99,Revenants ˣ Limitless,19.00
-100–103,Backboarders,18.00
-100–103,HELLOKITY,18.00
-100–103,Vaelis,18.00
-100–103,Vanta Edge,18.00
-104,AQUASERVICIO,15.00
-105–106,Oro Team,13.10
-105–106,SYNCΞD RFC,13.10
-107–112,Aurora FC,12.00
-107–112,BJK Black,12.00
-107–112,Fly To Moon,12.00
-107–112,ORION ACADEMY,12.00
-107–112,PXG U20,12.00
-107–112,SOL | Invictus,12.00
-113,TΞMPO,11.00
-114–116,AETERNVS,8.00
-114–116,Trifecta,8.00
-114–116,Young Ballers Revival,8.00
-117–122,KIKI,7.00
-117–122,NYX V,7.00
-117–122,PRAGMA CLAN,7.00
-117–122,under heaven,7.00
-117–122,UnderDozee,7.00
-117–122,ZXC TEAM,7.00
-123–124,Amog sus,4.00
-123–124,Aura,4.00
-125–128,O-Beck City,1.00
-125–128,Revenants x Limitless,1.00
-125–128,Vorpal sword,1.00
-125–128,YUREI,1.00
+38–39,Jinga,235.80
+38–39,Kali's minions,235.80
+40,TRIPLE SIX,213.40
+41,SUSLIK TEAM,213.20
+42,Brussels JK,186.10
+43–44,Blind Owls,184.00
+43–44,OverProdigy,184.00
+45,Exode,168.20
+46,Anarchy Mayhem,167.80
+47,Velzar,164.80
+48,mini PEKKA,155.40
+49,Aedern,139.40
+50,Insomnia,133.40
+51,F5 Black,120.80
+52,EKM,105.00
+53–54,Desire,104.80
+53–54,𝔻𝕚𝕔𝕥𝕒𝕥𝕠𝕣𝕤,104.80
+55,Ravens,96.40
+56,EDEN,95.00
+57,WildCard,88.40
+58,The Old Firm,88.00
+59,RXM,66.00
+60,Tasty Crousty FC,65.00
+61,Death Cloud Esports,62.00
+62,Young Bastards Club,61.10
+63,VALHALLA,60.40
+64,Shamrock FC,60.00
+65,5WLAN,59.40
+66,FRAUDES,57.00
+67–68,SOLID,56.00
+67–68,Totally spies,56.00
+69–71,False 5 Blue,52.40
+69–71,Infinite,52.40
+69–71,PXG,52.40
+72,InFeriX Esports,52.00
+73,TENRYU,49.10
+74,Bluelock,46.00
+75,Anarchy,38.00
+76,Mysteries Of Bangladesh,36.00
+77,VOLT Guardian Owls,32.00
+78–89,3m braa wa ele ho Zman a7na l3eebh,28.00
+78–89,Classic V,28.00
+78–89,DISCIPLINE,28.00
+78–89,False 5 Black,28.00
+78–89,LA Ñ,28.00
+78–89,OBLIVION,28.00
+78–89,STRIVE NA,28.00
+78–89,The Night Owls,28.00
+78–89,The Simpson,28.00
+78–89,Void Walkers,28.00
+78–89,YOSHI,28.00
+78–89,Zigotos,28.00
+90,La Pasión,25.00
+91,Lotus,20.00
+92–94,Brussels JK Black,19.00
+92–94,JabberWock,19.00
+92–94,Revenants ˣ Limitless,19.00
+95–98,Backboarders,18.00
+95–98,HELLOKITY,18.00
+95–98,Vaelis,18.00
+95–98,Vanta Edge,18.00
+99,AQUASERVICIO,15.00
+100–101,Oro Team,13.10
+100–101,SYNCΞD RFC,13.10
+102–107,Aurora FC,12.00
+102–107,BJK Black,12.00
+102–107,Fly To Moon,12.00
+102–107,ORION ACADEMY,12.00
+102–107,PXG U20,12.00
+102–107,SOL | Invictus,12.00
+108,TΞMPO,11.00
+109–111,AETERNVS,8.00
+109–111,Trifecta,8.00
+109–111,Young Ballers Revival,8.00
+112–117,KIKI,7.00
+112–117,NYX V,7.00
+112–117,PRAGMA CLAN,7.00
+112–117,under heaven,7.00
+112–117,UnderDozee,7.00
+112–117,ZXC TEAM,7.00
+118–119,Amog sus,4.00
+118–119,Aura,4.00
+120–123,O-Beck City,1.00
+120–123,Revenants x Limitless,1.00
+120–123,Vorpal sword,1.00
+120–123,YUREI,1.00
