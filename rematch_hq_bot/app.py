@@ -23,6 +23,7 @@ if not hasattr(discord, "app_commands"):
 
 from . import birthdays, config, giveaways
 from . import emergency_subs
+from .training_lobbies import TrainingHubView
 from .views import BirthdaySetupView, EmergencyPlayersView, EmergencyTeamsView, GiveawayEntryView, SetupPartView, SetupView
 
 
@@ -43,6 +44,7 @@ class RematchHQBot(commands.Bot):
         self.add_view(BirthdaySetupView())
         self.add_view(EmergencyPlayersView())
         self.add_view(EmergencyTeamsView())
+        self.add_view(TrainingHubView())
         self._emergency_reset_task = asyncio.create_task(self._emergency_midnight_reset_loop())
         self._birthday_announcement_task = asyncio.create_task(self._birthday_announcement_loop())
         self._giveaway_task = asyncio.create_task(self._giveaway_loop())
@@ -713,6 +715,34 @@ async def setup_emergency(interaction: discord.Interaction):
     await interaction.response.send_message(embed=player_embed, view=EmergencyPlayersView())
     await interaction.followup.send(embed=team_embed, view=EmergencyTeamsView())
 
+
+@app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
+@bot.tree.command(name="setup_training", description="Post the Training Hub panel", **_setup_kwargs)
+async def setup_training(interaction: discord.Interaction):
+    if not interaction.guild or not interaction.channel:
+        await interaction.response.send_message("Run this in the server.", ephemeral=True)
+        return
+
+    if not await _require_guild_administrator(interaction, interaction.guild):
+        return
+
+    if not config.is_allowed_setup_channel(guild_id=interaction.guild.id, channel_id=interaction.channel.id):
+        server = config.server_for_guild_id(interaction.guild.id)
+        required = server.setup_channel_id if server else None
+        if required is not None:
+            await interaction.response.send_message(f"Use this in <#{required}>.", ephemeral=True)
+            return
+
+    embed = discord.Embed(
+        title="💪 Training Hub",
+        description="Create structured training lobbies for custom matches.\n"
+        "🆚 __**Ones**__: Keeping 1v1 + Shooting 1v1\n"
+        "🪛 __**Drills**__: Crossing + Shooting + Blocking (Optional) + Keeping (Optional)\n"
+        "⚔️ __**Duels**__: Dribbling + Tackling + Keeping 1v1 (Optional)",
+        color=0xBE629B,
+    )
+    await interaction.response.send_message(embed=embed, view=TrainingHubView())
 
 def run():
     bot.run(config.TOKEN)

@@ -96,6 +96,7 @@ class ServerConfig:
     birthdays_role_id: int | None = None
     giveaways_channel_id: int | None = None
     giveaways_role_id: int | None = None
+    training_pings_channel_id: int | None = None
 
     # Minimum role ID - team roles will be positioned above this role.
     minimum_role_id: int | None = None
@@ -250,6 +251,7 @@ def _load_servers() -> dict[int, ServerConfig]:
                 birthdays_role_id=_as_int(block.get("BIRTHDAYS_ROLE_ID")),
                 giveaways_channel_id=_as_int(block.get("GIVEAWAYS_CHANNEL_ID")),
                 giveaways_role_id=_as_int(block.get("GIVEAWAYS_ROLE_ID")),
+                training_pings_channel_id=_as_int(block.get("TRAINING_PINGS_CHANNEL_ID")),
                 minimum_role_id=_as_int(block.get("MINIMUM_ROLE_ID")),
                 tournament_info_channel_id=_parse_map_int(block.get("TOURNAMENT_INFO_CHANNEL_ID")),
                 hall_of_fame_channel_id=_parse_int_or_map_int(block.get("HALL_OF_FAME_CHANNEL_ID")),
@@ -298,6 +300,14 @@ GIVEAWAYS_ROLE_ID = _as_int(os.getenv("GIVEAWAYS_ROLE_ID")) or next(
 )
 
 
+def training_pings_channel_id_for_guild(guild_id: int) -> int | None:
+    """Channel where training lobby embeds are posted: per-server config, else TRAINING_PINGS_CHANNEL_ID env."""
+    cfg = SERVERS_BY_ID.get(int(guild_id))
+    if cfg is not None and cfg.training_pings_channel_id is not None:
+        return cfg.training_pings_channel_id
+    return _as_int(os.getenv("TRAINING_PINGS_CHANNEL_ID"))
+
+
 def _load_emergency_subs_roles() -> dict[str, int]:
     with _CONFIG_YAML.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
@@ -315,3 +325,22 @@ def _load_emergency_subs_roles() -> dict[str, int]:
 
 
 EMERGENCY_SUBS_ROLES: dict[str, int] = _load_emergency_subs_roles()
+
+
+def _load_training_ping_roles() -> dict[str, int]:
+    with _CONFIG_YAML.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        return {}
+    roles = raw.get("TRAINING_PING_ROLES")
+    if not isinstance(roles, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key, value in roles.items():
+        role_id = _as_int(value)
+        if role_id is not None:
+            out[str(key).strip().lower()] = role_id
+    return out
+
+
+TRAINING_PING_ROLES: dict[str, int] = _load_training_ping_roles()
