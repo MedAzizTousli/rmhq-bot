@@ -69,20 +69,21 @@ class LobbySlot:
 LobbyStatus = Literal["open", "full", "closed", "expired"]
 
 LOBBY_EXPIRE_SECONDS = 15 * 60
-SESSION_IDLE_SECONDS = 5 * 60
+VOICE_EMPTY_SECONDS = 60
 
 
 @dataclasses.dataclass
 class TrainingLobby:
     lobby_id: str
     creator_id: int
+    preset_key: str
     preset_name: str
     slots: list[LobbySlot]
     original_channel_id: int
     original_message_id: int
     guild_id: int
     temp_text_channel_id: int | None = None
-    temp_voice_channel_id: int | None = None
+    temp_voice_channel_ids: tuple[int, ...] = ()
     status: LobbyStatus = "open"
     session_closed_auto: bool = False
     # Session message (temp text channel) + delayed close
@@ -91,11 +92,16 @@ class TrainingLobby:
     close_abort_event: asyncio.Event | None = None
     session_close_task: asyncio.Task | None = None
     expire_task: asyncio.Task | None = None
-    session_idle_task: asyncio.Task | None = None
+    voice_empty_task: asyncio.Task | None = None
 
 
 _lobbies: dict[str, TrainingLobby] = {}
 _lock = asyncio.Lock()
+
+
+def _dual_voice_drills_session(lobby: TrainingLobby) -> bool:
+    """Four-player drills (preset 2 with both optional roles) use two parallel voice channels."""
+    return lobby.preset_key == "preset_2" and len(lobby.slots) == 4
 
 
 def _slot_line(slot: LobbySlot) -> str:
@@ -129,12 +135,14 @@ def _training_ping_content(lobby: TrainingLobby) -> str:
         if role_id is not None:
             parts.append(f"<@&{role_id}>")
     return " ".join(parts)
+
+
 def build_lobby_embed(lobby: TrainingLobby) -> discord.Embed:
     creator = f"<@{lobby.creator_id}>"
     embed = discord.Embed(
         title=f"⚽ Training Lobby — {lobby.preset_name}",
         description=(
-            f"{creator} created a training lobby. Use a **Join** button below to claim a role.\n\n"
+            f"{creator} created a training lobby. Use **Join** below to claim a remaining role.\n\n"
             f"**Status:** {lobby_status_line(lobby)}"
         ),
         color=0xBE629B,
@@ -152,13 +160,20 @@ def build_lobby_embed(lobby: TrainingLobby) -> discord.Embed:
 def build_session_control_embed(lobby: TrainingLobby) -> discord.Embed:
     participants = [s.user_id for s in lobby.slots if s.user_id is not None]
     mentions = " ".join(f"<@{uid}>" for uid in participants)
+    vc_blurb = (
+        "Use this text channel and the **two voice channels** for your session (split drills).\n\n"
+        "If **nobody is in either voice channel** for **1 minute**, this session closes automatically "
+        "(channels removed)."
+        if _dual_voice_drills_session(lobby)
+        else (
+            "Use this text channel and voice channel for your session.\n\n"
+            "If nobody is in the voice channel for **1 minute**, this session closes automatically "
+            "(channels removed)."
+        )
+    )
     return discord.Embed(
         title="Training session",
-        description=(
-            "✅ Your training lobby is ready.\n\n"
-            f"Players:\n{mentions}\n\n"
-            "Use this text channel and voice channel for your session."
-        ),
+        description=f"✅ Your training lobby is ready.\n\nPlayers:\n{mentions}\n\n{vc_blurb}",
         color=0xBE629B,
     )
 
@@ -243,12 +258,91 @@ async def _lobby_expire_after(bot: discord.Client, lobby_id: str) -> None:
     await update_lobby_message(bot, lobby)
 
 
-async def _session_idle_cleanup_task(bot: discord.Client, lobby_id: str) -> None:
+def _human_voice_members(voice_channel: discord.VoiceChannel) -> int:
+    return sum(1 for m in voice_channel.members if not m.bot)
+
+
+def _session_voice_channels_all_empty(guild: discord.Guild, lobby: TrainingLobby) -> bool:
+    if not lobby.temp_voice_channel_ids:
+        return False
+    for vc_id in lobby.temp_voice_channel_ids:
+        ch = guild.get_channel(vc_id)
+        if isinstance(ch, discord.VoiceChannel) and _human_voice_members(ch) > 0:
+            return False
+    return True
+
+
+async def _voice_empty_delayed_close(bot: discord.Client, lobby_id: str) -> None:
     try:
-        await asyncio.sleep(SESSION_IDLE_SECONDS)
+        await asyncio.sleep(VOICE_EMPTY_SECONDS)
     except asyncio.CancelledError:
         return
+    guild_id: int | None = None
+    async with _lock:
+        lobby = _lobbies.get(lobby_id)
+        if lobby is None or lobby.status != "full":
+            if lobby is not None:
+                lobby.voice_empty_task = None
+            return
+        guild_id = lobby.guild_id
+        lobby.voice_empty_task = None
+
+    guild = bot.get_guild(guild_id) if guild_id else None
+    if guild is None:
+        await execute_session_close(bot, lobby_id, auto_session_idle=True)
+        return
+    async with _lock:
+        lo = _lobbies.get(lobby_id)
+    if lo is None or lo.status != "full":
+        return
+    if not _session_voice_channels_all_empty(guild, lo):
+        return
     await execute_session_close(bot, lobby_id, auto_session_idle=True)
+
+
+async def _resync_voice_empty_timer(bot: discord.Client, lobby_id: str) -> None:
+    async with _lock:
+        lobby = _lobbies.get(lobby_id)
+        if lobby is None or lobby.status != "full":
+            return
+        guild = bot.get_guild(lobby.guild_id)
+        if guild is None or not lobby.temp_voice_channel_ids:
+            return
+        if lobby.voice_empty_task is not None and not lobby.voice_empty_task.done():
+            lobby.voice_empty_task.cancel()
+            lobby.voice_empty_task = None
+        if _session_voice_channels_all_empty(guild, lobby):
+            lobby.voice_empty_task = asyncio.create_task(_voice_empty_delayed_close(bot, lobby_id))
+
+
+async def handle_training_voice_state_update(
+    member: discord.Member,
+    before: discord.VoiceState,
+    after: discord.VoiceState,
+    bot: discord.Client,
+) -> None:
+    if member.bot:
+        return
+    guild = member.guild
+    touched: set[int] = set()
+    if before.channel is not None:
+        touched.add(before.channel.id)
+    if after.channel is not None:
+        touched.add(after.channel.id)
+    if not touched:
+        return
+
+    lobby_ids: list[str] = []
+    async with _lock:
+        for lob in _lobbies.values():
+            if lob.guild_id != guild.id or lob.status != "full":
+                continue
+            vids = lob.temp_voice_channel_ids
+            if vids and touched.intersection(vids):
+                lobby_ids.append(lob.lobby_id)
+
+    for lid in lobby_ids:
+        await _resync_voice_empty_timer(bot, lid)
 
 
 def _parse_yes_no(value: str) -> bool | None:
@@ -303,9 +397,25 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
 
     safe_tag = lobby.lobby_id[:6].lower()
     text_name = f"training-{safe_tag}-text"
-    voice_name = f"training-{safe_tag}-vc"
+    base_vc_name = f"training-{safe_tag}-vc"
+    dual_vc = _dual_voice_drills_session(lobby)
 
     reason = "Training lobby session"
+
+    text_ch: discord.TextChannel | None = None
+    voice_created: list[discord.VoiceChannel] = []
+
+    async def rollback_partial() -> None:
+        if text_ch is not None:
+            try:
+                await text_ch.delete(reason="Training setup failed")
+            except discord.DiscordException:
+                pass
+        for vc in voice_created:
+            try:
+                await vc.delete(reason="Training setup failed")
+            except discord.DiscordException:
+                pass
 
     try:
         text_ch = await guild.create_text_channel(
@@ -314,13 +424,34 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
             overwrites=overwrites,
             reason=reason,
         )
-        voice_ch = await guild.create_voice_channel(
-            voice_name,
-            category=parent,
-            overwrites=overwrites,
-            reason=reason,
-        )
+        if dual_vc:
+            voice_created.append(
+                await guild.create_voice_channel(
+                    f"{base_vc_name}-1",
+                    category=parent,
+                    overwrites=overwrites,
+                    reason=reason,
+                )
+            )
+            voice_created.append(
+                await guild.create_voice_channel(
+                    f"{base_vc_name}-2",
+                    category=parent,
+                    overwrites=overwrites,
+                    reason=reason,
+                )
+            )
+        else:
+            voice_created.append(
+                await guild.create_voice_channel(
+                    base_vc_name,
+                    category=parent,
+                    overwrites=overwrites,
+                    reason=reason,
+                )
+            )
     except discord.Forbidden:
+        await rollback_partial()
         await interaction.response.send_message(
             f"✅ You joined as: **{display}**\n"
             "✅ Lobby ready. I could not create private channels (missing permissions).",
@@ -328,6 +459,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
         )
         return
     except discord.HTTPException:
+        await rollback_partial()
         await interaction.response.send_message(
             f"✅ You joined as: **{display}**\n"
             "✅ Lobby ready. Creating channels failed; try again or contact staff.",
@@ -336,7 +468,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
         return
 
     lobby.temp_text_channel_id = text_ch.id
-    lobby.temp_voice_channel_id = voice_ch.id
+    lobby.temp_voice_channel_ids = tuple(vc.id for vc in voice_created)
     await update_lobby_message(interaction.client, lobby)
 
     mentions = " ".join(f"<@{uid}>" for uid in participants if uid is not None)
@@ -354,9 +486,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
     except discord.DiscordException:
         pass
 
-    lobby.session_idle_task = asyncio.create_task(
-        _session_idle_cleanup_task(interaction.client, lobby.lobby_id)
-    )
+    await _resync_voice_empty_timer(interaction.client, lobby.lobby_id)
 
     await interaction.response.send_message(
         f"✅ You joined as: **{display}**\n"
@@ -414,19 +544,20 @@ async def execute_session_close(
             lobby.expire_task = None
             if not et.done():
                 et.cancel()
-        if lobby.session_idle_task is not None:
-            idle_t = lobby.session_idle_task
-            lobby.session_idle_task = None
-            if not auto_session_idle and not idle_t.done():
-                idle_t.cancel()
+        cur = asyncio.current_task()
+        if lobby.voice_empty_task is not None:
+            vt = lobby.voice_empty_task
+            lobby.voice_empty_task = None
+            if vt is not cur and not vt.done():
+                vt.cancel()
         lobby.session_closed_auto = bool(auto_session_idle)
         lobby.status = "closed"
         lobby.close_abort_event = None
         lobby.session_close_task = None
         guild_id = lobby.guild_id
-        to_delete = (lobby.temp_text_channel_id, lobby.temp_voice_channel_id)
+        to_delete = (lobby.temp_text_channel_id,) + lobby.temp_voice_channel_ids
         lobby.temp_text_channel_id = None
-        lobby.temp_voice_channel_id = None
+        lobby.temp_voice_channel_ids = ()
         lobby.session_message_id = None
         lobby.session_channel_id = None
         saved = lobby
@@ -634,9 +765,12 @@ async def create_training_lobby_post(
     interaction: discord.Interaction,
     preset_key: str,
     included_optional: list[str],
+    *,
+    creator_slot_key: str,
 ) -> str | None:
     """
-    Create the public lobby message with all slots empty. Creator picks a role via Join like everyone else.
+    Create the public lobby message after the host picks their role privately.
+    The chosen slot is pre-filled before the embed posts.
     Returns None on success, or a short error message on failure.
     """
     if not interaction.guild or not interaction.channel:
@@ -654,12 +788,20 @@ async def create_training_lobby_post(
 
     preset = PRESETS[preset_key]
     slot_keys_ordered = list(preset.required_keys) + [k for k in preset.optional_keys if k in included_optional]
+    if creator_slot_key not in slot_keys_ordered:
+        return "That role isn’t available for this lobby configuration."
+
     slots = [LobbySlot(key=k, display_name=SLOT_LABELS[k]) for k in slot_keys_ordered]
+    for s in slots:
+        if s.key == creator_slot_key:
+            s.user_id = interaction.user.id
+            break
 
     lobby_id = secrets.token_hex(6)
     lobby = TrainingLobby(
         lobby_id=lobby_id,
         creator_id=interaction.user.id,
+        preset_key=preset_key,
         preset_name=preset.name,
         slots=slots,
         original_channel_id=0,
@@ -708,6 +850,59 @@ def _preset_options() -> list[discord.SelectOption]:
     ]
 
 
+def _creator_role_pick_embed(preset_key: str) -> discord.Embed:
+    preset = PRESETS[preset_key]
+    return discord.Embed(
+        title="Your role",
+        description=(
+            f"**{preset.name}**\n\n"
+            "Choose **your role** in this lobby. The public recruiting message posts after you pick "
+            "(others only see roles that are still open)."
+        ),
+        color=0xBE629B,
+    )
+
+
+class CreatorRoleSelect(discord.ui.Select):
+    def __init__(self, preset_key: str, included_optional: list[str]) -> None:
+        preset = PRESETS[preset_key]
+        ordered = list(preset.required_keys) + [k for k in preset.optional_keys if k in included_optional]
+        opts: list[discord.SelectOption] = []
+        for k in ordered[:25]:
+            label = SLOT_LABELS[k]
+            if len(label) > 100:
+                label = label[:97] + "…"
+            opts.append(discord.SelectOption(label=label, value=k))
+        super().__init__(
+            placeholder="Select your role…",
+            min_values=1,
+            max_values=1,
+            options=opts,
+        )
+        self.preset_key = preset_key
+        self.included_optional = included_optional.copy()
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        role_key = self.values[0]
+        await interaction.response.defer(ephemeral=True)
+        err = await create_training_lobby_post(
+            interaction,
+            self.preset_key,
+            self.included_optional,
+            creator_slot_key=role_key,
+        )
+        if err:
+            await interaction.followup.send(err, ephemeral=True)
+            return
+        await interaction.edit_original_response(content="✅ Training lobby created.", embed=None, view=None)
+
+
+class CreatorRolePickView(discord.ui.View):
+    def __init__(self, preset_key: str, included_optional: list[str]) -> None:
+        super().__init__(timeout=600)
+        self.add_item(CreatorRoleSelect(preset_key, included_optional))
+
+
 class OptionalSlotsModal(discord.ui.Modal):
     def __init__(self, preset_key: str) -> None:
         preset = PRESETS[preset_key]
@@ -744,11 +939,15 @@ class OptionalSlotsModal(discord.ui.Modal):
                 included.append(key)
 
         await interaction.response.defer(ephemeral=True)
-        err = await create_training_lobby_post(interaction, self.preset_key, included)
-        if err:
-            await interaction.followup.send(err, ephemeral=True)
+        embed = _creator_role_pick_embed(self.preset_key)
+        try:
+            await interaction.followup.send(embed=embed, view=CreatorRolePickView(self.preset_key, included), ephemeral=True)
+        except discord.HTTPException:
+            await interaction.followup.send(
+                "Could not show role picker. Try **Create Lobby** again.",
+                ephemeral=True,
+            )
             return
-        await interaction.edit_original_response(content="✅ Training lobby created.", embed=None, view=None)
 
 
 class PresetPickerView(discord.ui.View):
@@ -773,12 +972,8 @@ class PresetSelect(discord.ui.Select):
             await interaction.response.send_modal(OptionalSlotsModal(preset_key))
             return
 
-        await interaction.response.defer(ephemeral=True)
-        err = await create_training_lobby_post(interaction, preset_key, [])
-        if err:
-            await interaction.followup.send(err, ephemeral=True)
-            return
-        await interaction.edit_original_response(content="✅ Training lobby created.", embed=None, view=None)
+        embed = _creator_role_pick_embed(preset_key)
+        await interaction.response.edit_message(embed=embed, view=CreatorRolePickView(preset_key, []))
 
 
 # --- Lobby join / leave ------------------------------------------------------
@@ -893,11 +1088,17 @@ class CloseSessionView(discord.ui.View):
             return
 
         closes_at = int(time.time()) + 60
+        lobby_for_embed = _lobbies.get(self.lobby_id)
+        delete_detail = (
+            "The private **text** channel and **two voice** channels will be deleted."
+            if lobby_for_embed is not None and _dual_voice_drills_session(lobby_for_embed)
+            else "The private **text** channel and **voice** channel will be deleted."
+        )
         embed = discord.Embed(
             title="Closing session",
             description=(
                 f"This session will close **<t:{closes_at}:R>**.\n"
-                "The private text and voice channels will be deleted.\n\n"
+                f"{delete_detail}\n\n"
                 "Tap **Cancel** if you clicked by mistake."
             ),
             color=0xBE629B,

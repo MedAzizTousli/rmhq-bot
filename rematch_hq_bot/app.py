@@ -23,7 +23,7 @@ if not hasattr(discord, "app_commands"):
 
 from . import birthdays, config, giveaways
 from . import emergency_subs
-from .training_lobbies import TrainingHubView
+from .training_lobbies import TrainingHubView, handle_training_voice_state_update
 from .views import BirthdaySetupView, EmergencyPlayersView, EmergencyTeamsView, GiveawayEntryView, SetupPartView, SetupView
 
 
@@ -32,11 +32,15 @@ class RematchHQBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+        intents.voice_states = True
         super().__init__(command_prefix="!", intents=intents)
         self._emergency_reset_task: asyncio.Task | None = None
         self._birthday_announcement_task: asyncio.Task | None = None
         self._giveaway_task: asyncio.Task | None = None
         self._birthday_role_lock = asyncio.Lock()
+
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        await handle_training_voice_state_update(member, before, after, self)
 
     async def setup_hook(self):
         self.add_view(SetupView())
