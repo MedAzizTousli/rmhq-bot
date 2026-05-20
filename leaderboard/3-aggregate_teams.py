@@ -146,6 +146,7 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Aziz clock": "aziz show clock",
     "WWLUGAN$K": "WWLUGANSK",
     "ΔX Golden Requiem": "DeltaX Golden Requiem",
+    "Volare": "NXT"
 }
 
 DISBANDED_TEAMS: list[str] = [

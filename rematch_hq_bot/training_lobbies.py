@@ -68,8 +68,9 @@ class LobbySlot:
 
 LobbyStatus = Literal["open", "full", "closed", "expired"]
 
-LOBBY_EXPIRE_SECONDS = 15 * 60
-VOICE_EMPTY_SECONDS = 60
+LOBBY_EXPIRE_SECONDS = 15 * 60  # open lobby (recruiting) — embed expires if not full
+VOICE_EMPTY_SECONDS = 5 * 60  # session running — empty VC(s) for this long → auto-close
+SESSION_MANUAL_CLOSE_SECONDS = 60  # Close Session button — delay before delete (Cancel aborts)
 
 
 @dataclasses.dataclass
@@ -139,12 +140,14 @@ def _training_ping_content(lobby: TrainingLobby) -> str:
 
 def build_lobby_embed(lobby: TrainingLobby) -> discord.Embed:
     creator = f"<@{lobby.creator_id}>"
+    recruit = f"{creator} created a training lobby. Use **Join** below to claim a remaining role."
+    if lobby.status == "open":
+        recruit += (
+            "\n\n⏱️ Closes automatically after **15 minutes** if the lobby hasn't filled."
+        )
     embed = discord.Embed(
         title=f"⚽ Training Lobby — {lobby.preset_name}",
-        description=(
-            f"{creator} created a training lobby. Use **Join** below to claim a remaining role.\n\n"
-            f"**Status:** {lobby_status_line(lobby)}"
-        ),
+        description=f"{recruit}\n\n**Status:** {lobby_status_line(lobby)}",
         color=0xBE629B,
     )
     for slot in lobby.slots:
@@ -162,12 +165,12 @@ def build_session_control_embed(lobby: TrainingLobby) -> discord.Embed:
     mentions = " ".join(f"<@{uid}>" for uid in participants)
     vc_blurb = (
         "Use this text channel and the **two voice channels** for your session (split drills).\n\n"
-        "If **nobody is in either voice channel** for **1 minute**, this session closes automatically "
+        "If **nobody is in either voice channel** for **5 minutes**, this session closes automatically "
         "(channels removed)."
         if _dual_voice_drills_session(lobby)
         else (
             "Use this text channel and voice channel for your session.\n\n"
-            "If nobody is in the voice channel for **1 minute**, this session closes automatically "
+            "If nobody is in the voice channel for **5 minutes**, this session closes automatically "
             "(channels removed)."
         )
     )
@@ -346,10 +349,10 @@ async def handle_training_voice_state_update(
 
 
 def _parse_yes_no(value: str) -> bool | None:
-    """Return True/False, or None if the user input is invalid."""
+    """Return True if include, False if skip. Empty input = skip (default **No**). Invalid → None."""
     s = (value or "").strip().lower()
     if s == "":
-        return True
+        return False
     if s in ("y", "yes", "1", "true"):
         return True
     if s in ("n", "no", "0", "false"):
@@ -393,7 +396,8 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
         return
 
     participants = [s.user_id for s in lobby.slots if s.user_id is not None]
-    overwrites = _training_channel_permissions(guild, participants)
+    text_overwrites = _training_text_permissions(guild, participants)
+    voice_overwrites = _training_voice_permissions(guild, participants)
 
     safe_tag = lobby.lobby_id[:6].lower()
     text_name = f"training-{safe_tag}-text"
@@ -421,7 +425,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
         text_ch = await guild.create_text_channel(
             text_name,
             category=parent,
-            overwrites=overwrites,
+            overwrites=text_overwrites,
             reason=reason,
         )
         if dual_vc:
@@ -429,7 +433,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
                 await guild.create_voice_channel(
                     f"{base_vc_name}-1",
                     category=parent,
-                    overwrites=overwrites,
+                    overwrites=voice_overwrites,
                     reason=reason,
                 )
             )
@@ -437,7 +441,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
                 await guild.create_voice_channel(
                     f"{base_vc_name}-2",
                     category=parent,
-                    overwrites=overwrites,
+                    overwrites=voice_overwrites,
                     reason=reason,
                 )
             )
@@ -446,7 +450,7 @@ async def finalize_full_lobby(interaction: discord.Interaction, lobby: TrainingL
                 await guild.create_voice_channel(
                     base_vc_name,
                     category=parent,
-                    overwrites=overwrites,
+                    overwrites=voice_overwrites,
                     reason=reason,
                 )
             )
@@ -501,10 +505,11 @@ def _can_close_session(member: discord.Member, lobby: TrainingLobby) -> bool:
     return user_slot_index(lobby, member.id) is not None
 
 
-def _training_channel_permissions(
+def _training_text_permissions(
     guild: discord.Guild,
     participants: list[int],
 ) -> dict[discord.abc.Snowflake, discord.PermissionOverwrite]:
+    """Private session text: hidden from @everyone; participants + bot only."""
     overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         guild.me: discord.PermissionOverwrite(
@@ -523,6 +528,35 @@ def _training_channel_permissions(
             view_channel=True,
             send_messages=True,
             read_message_history=True,
+            connect=True,
+            speak=True,
+        )
+    return overwrites
+
+
+def _training_voice_permissions(
+    guild: discord.Guild,
+    participants: list[int],
+) -> dict[discord.abc.Snowflake, discord.PermissionOverwrite]:
+    """VCs visible to everyone; join/speak only for lobby members (+ bot)."""
+    overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=True,
+            connect=False,
+            speak=False,
+        ),
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True,
+            manage_channels=True,
+            connect=True,
+            speak=True,
+        ),
+    }
+    for uid in participants:
+        m = guild.get_member(uid)
+        target: discord.abc.Snowflake = m if m is not None else discord.Object(id=uid)
+        overwrites[target] = discord.PermissionOverwrite(
+            view_channel=True,
             connect=True,
             speak=True,
         )
@@ -589,7 +623,7 @@ async def _session_close_wait_task(bot: discord.Client, lobby_id: str) -> None:
     if event is None:
         return
     try:
-        await asyncio.wait_for(event.wait(), timeout=60.0)
+        await asyncio.wait_for(event.wait(), timeout=float(SESSION_MANUAL_CLOSE_SECONDS))
     except asyncio.TimeoutError:
         await execute_session_close(bot, lobby_id)
     else:
@@ -915,7 +949,7 @@ class OptionalSlotsModal(discord.ui.Modal):
             self.add_item(
                 discord.ui.TextInput(
                     label=label,
-                    placeholder="Yes (default) = include | No = skip",
+                    placeholder="No (default) = skip | Yes = include",
                     style=discord.TextStyle.short,
                     required=False,
                     max_length=12,
@@ -1087,7 +1121,7 @@ class CloseSessionView(discord.ui.View):
             )
             return
 
-        closes_at = int(time.time()) + 60
+        closes_at = int(time.time()) + SESSION_MANUAL_CLOSE_SECONDS
         lobby_for_embed = _lobbies.get(self.lobby_id)
         delete_detail = (
             "The private **text** channel and **two voice** channels will be deleted."
