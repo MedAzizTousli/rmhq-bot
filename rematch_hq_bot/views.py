@@ -2530,6 +2530,146 @@ def _parse_winning_roster(raw: str, *, required: bool = True) -> tuple[list[str]
     return out, None
 
 
+def _norm_team_lookup_name(name: str) -> str:
+    return " ".join((name or "").strip().split()).casefold()
+
+
+def _safe_load_rosters_yaml() -> dict[str, object] | None:
+    """Load leaderboard/output/rosters.yaml, or None if missing/invalid."""
+    if not _ROSTERS_YAML.exists():
+        return None
+    try:
+        data = yaml.safe_load(_ROSTERS_YAML.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError, UnicodeDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _lookup_rosters_yaml_team_block(
+    raw_rosters: dict[str, object],
+    standings_team_name: str,
+) -> dict[str, object] | None:
+    if not standings_team_name.strip():
+        return None
+    target = _norm_team_lookup_name(standings_team_name)
+    for team_key, block in raw_rosters.items():
+        if not isinstance(team_key, str) or not isinstance(block, dict):
+            continue
+        if _norm_team_lookup_name(team_key) == target:
+            return block
+    return None
+
+
+def _yaml_roster_support_entries_to_winning_lines(entries: object) -> tuple[list[str], str | None]:
+    """Parse roster/support list from rosters.yaml into winning-roster embed lines."""
+    if entries is None:
+        return [], None
+
+    if not isinstance(entries, list):
+        return [], "Invalid `rosters.yaml` roster/support field (expected a YAML list)."
+    lines_out: list[str] = []
+
+    for item in entries:
+        country_key: object = None
+        uid_val: object = None
+
+        if isinstance(item, dict):
+            if len(item) != 1:
+                return [], f"Bad row in rosters.yaml (expected `Country: discord_id`): `{item!r}`"
+            country_key, uid_val = next(iter(item.items()))
+        elif isinstance(item, str):
+            s = item.strip()
+            if ":" not in s:
+                return [], f"Bad rosters.yaml line (use `Country: id`): `{s!r}`"
+            left, right = s.split(":", 1)
+            country_key = left
+            uid_val = right
+        else:
+            return [], f"Unsupported roster/support entry type in rosters.yaml: `{item!r}`"
+
+        country_display = str(country_key).strip()
+        uid_str = _extract_user_id(str(uid_val).strip())
+        if not country_display:
+            return [], "Missing country name on a roster/support line in `rosters.yaml`."
+        if not uid_str:
+            return [], (
+                "Could not read a Discord user id from a roster/support line in "
+                "`rosters.yaml`."
+            )
+
+        flag = _country_to_flag(country_display)
+        if not flag:
+            return [], (
+                f"Unknown country/country alias `{country_display!r}` in `rosters.yaml` "
+                f"(Discord id `{uid_str}`)."
+            )
+        lines_out.append(f"{flag} <@{uid_str}>")
+
+    return lines_out, None
+
+
+def _hall_of_fame_roster_support_resolve(
+    team_name: str,
+    roster_modal_value: str,
+    support_modal_value: str,
+) -> tuple[list[str], list[str], str | None, str | None]:
+    """
+    Prefer `leaderboard/output/rosters.yaml` for roster/support when `team_name`
+    matches a top-level entry. Otherwise `_parse_roster` on modal text.
+
+    Returns (roster_lines, support_lines, user_error_ephemeral_or_none, yaml_loaded_hint_or_none).
+    """
+    name_s = " ".join((team_name or "").strip().split())
+    yaml_loaded_parts: list[str] = []
+
+    raw = _safe_load_rosters_yaml()
+    block = _lookup_rosters_yaml_team_block(raw, name_s) if raw is not None and name_s else None
+
+    roster_lines: list[str] = []
+    if block is not None:
+        lines_y, err_y = _yaml_roster_support_entries_to_winning_lines(block.get("roster"))
+        if err_y:
+            return [], [], err_y, None
+        if lines_y:
+            roster_lines = lines_y
+            yaml_loaded_parts.append("roster")
+
+    if not roster_lines:
+        lines_m, erm = _parse_roster(roster_modal_value or "", required=True)
+        if erm:
+            roster_hint = (
+                f"\n\nOr leave **Roster** blank when **`{name_s}`** matches a team in "
+                "`leaderboard/output/rosters.yaml` (with that roster populated)."
+                if name_s
+                else ""
+            )
+            return [], [], erm + roster_hint, None
+        roster_lines = lines_m
+
+    support_lines: list[str] = []
+    if block is not None:
+        sup_y, err_s = _yaml_roster_support_entries_to_winning_lines(block.get("support"))
+        if err_s:
+            return [], [], err_s, None
+        if sup_y:
+            support_lines = sup_y
+            yaml_loaded_parts.append("support")
+
+    if not support_lines:
+        sup_m, esl = _parse_roster(support_modal_value or "", required=False)
+        if esl:
+            return [], [], esl, None
+        support_lines = sup_m
+
+    hint: str | None = None
+    if yaml_loaded_parts and name_s:
+        labeled = "` and **`".join(yaml_loaded_parts)
+        hint = (
+            f"Loaded **`{labeled}`** from `leaderboard/output/rosters.yaml` for **`{name_s}`**."
+        )
+    return roster_lines, support_lines, None, hint
+
+
 def _parse_roster(raw: str, *, required: bool = True) -> tuple[list[str], str | None]:
     """
     Input: one player per line, in either order:
@@ -2660,14 +2800,14 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
     )
     winning_roster = discord.ui.TextInput(
         label="Winning roster",
-        placeholder="One per line: <@id> FR  (or :flag_fr: / 🇫🇷)",
+        placeholder="Blank if winner is in leaderboard/output/rosters.yaml; else `<@id> FR` per line",
         style=discord.TextStyle.paragraph,
-        required=True,
+        required=False,
         max_length=400,
     )
     winning_support = discord.ui.TextInput(
-        label="Winning support (optional, same format)",
-        placeholder="Leave blank if none",
+        label="Winning support",
+        placeholder="Usually blank when YAML has support for the winner; else same format as roster",
         style=discord.TextStyle.paragraph,
         required=False,
         max_length=400,
@@ -2694,29 +2834,69 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         winner_team = teams[0] if teams else ""
         medals = ["1.", "2.", "3.", "4."]
 
-        roster_lines, roster_err = _parse_winning_roster(self.winning_roster.value or "")
-        if roster_err:
-            await interaction.response.send_message(
-                "Winning roster format (one per line):\n"
-                "`<@123456789012345678> FR`\n"
-                "`123456789012345678 :flag_fr:`\n"
-                "`<@123456789012345678> 🇫🇷`\n\n"
-                f"{roster_err}",
-                ephemeral=True,
-            )
-            return
+        raw_rosters = _safe_load_rosters_yaml()
+        team_block = (
+            _lookup_rosters_yaml_team_block(raw_rosters, winner_team)
+            if raw_rosters is not None and winner_team
+            else None
+        )
 
-        support_lines, support_err = _parse_winning_roster(self.winning_support.value or "", required=False)
-        if support_err:
-            await interaction.response.send_message(
-                "Winning support format (same as winning roster, one per line):\n"
-                "`<@123456789012345678> FR`\n"
-                "`123456789012345678 :flag_fr:`\n"
-                "`<@123456789012345678> 🇫🇷`\n\n"
-                f"{support_err}",
-                ephemeral=True,
+        roster_lines: list[str] = []
+        yaml_loaded_parts: list[str] = []
+
+        if team_block is not None:
+            lines_y, err_y = _yaml_roster_support_entries_to_winning_lines(team_block.get("roster"))
+            if err_y:
+                await interaction.response.send_message(err_y, ephemeral=True)
+                return
+            if lines_y:
+                roster_lines = lines_y
+                yaml_loaded_parts.append("roster")
+
+        if not roster_lines:
+            roster_lines, roster_err = _parse_winning_roster(self.winning_roster.value or "")
+            if roster_err:
+                await interaction.response.send_message(
+                    "Winning roster format (one per line):\n"
+                    "`<@123456789012345678> FR`\n"
+                    "`123456789012345678 :flag_fr:`\n"
+                    "`<@123456789012345678> 🇫🇷`\n\n"
+                    "Or leave this blank when the **first standings team** matches a key in "
+                    "`leaderboard/output/rosters.yaml`.\n\n"
+                    f"{roster_err}",
+                    ephemeral=True,
+                )
+                return
+
+        support_lines: list[str] = []
+        if team_block is not None:
+            sup_y, err_s = _yaml_roster_support_entries_to_winning_lines(team_block.get("support"))
+            if err_s:
+                await interaction.response.send_message(err_s, ephemeral=True)
+                return
+            if sup_y:
+                support_lines = sup_y
+                yaml_loaded_parts.append("support")
+
+        if not support_lines:
+            support_lines, support_err = _parse_winning_roster(self.winning_support.value or "", required=False)
+            if support_err:
+                await interaction.response.send_message(
+                    "Winning support format (same as winning roster, one per line):\n"
+                    "`<@123456789012345678> FR`\n"
+                    "`123456789012345678 :flag_fr:`\n"
+                    "`<@123456789012345678> 🇫🇷`\n\n"
+                    f"{support_err}",
+                    ephemeral=True,
+                )
+                return
+
+        yaml_source_hint: str | None = None
+        if yaml_loaded_parts and winner_team:
+            labeled = "` and **`".join(yaml_loaded_parts)
+            yaml_source_hint = (
+                f"Loaded **`{labeled}`** from `leaderboard/output/rosters.yaml` for **`{winner_team}`**."
             )
-            return
 
         if not interaction.guild:
             await interaction.response.send_message("Run this in the server.", ephemeral=True)
@@ -2791,6 +2971,8 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
 
         # Post preview first (no pings).
         preview_lines = ["[PREVIEW] Tournament Results"]
+        if yaml_source_hint:
+            preview_lines.append(yaml_source_hint)
         if storage_warning:
             preview_lines.append("⚠️ Some Supabase logos missing — see the bot’s ephemeral message.")
         preview_kwargs = dict(
@@ -2837,6 +3019,8 @@ class TournamentResultsModal(discord.ui.Modal, title="Tournament Results"):
         followup_text = (
             f"Preview posted in <#{test_channel_id}>. Confirm to post in <#{results_channel_id}>."
         )
+        if yaml_source_hint:
+            followup_text = f"{followup_text}\n\n{yaml_source_hint}"
         if storage_warning:
             followup_text = f"{followup_text}\n\n{storage_warning}"
             if len(followup_text) > 2000:
@@ -3217,14 +3401,14 @@ class HallOfFameModal(discord.ui.Modal):
     )
     roster = discord.ui.TextInput(
         label="Roster (one per line: country + discord id)",
-        placeholder="FR 123456789012345678\nMA <@123456789012345678>\n:flag_es: 123456789012345678",
+        placeholder="Blank when team is in leaderboard/output/rosters.yaml; else one line/player",
         style=discord.TextStyle.paragraph,
-        required=True,
+        required=False,
         max_length=600,
     )
     support = discord.ui.TextInput(
-        label="Support (optional, same format as roster)",
-        placeholder="Leave blank if none",
+        label="Support (optional)",
+        placeholder="Usually blank when YAML lists support for this team; else same as roster",
         style=discord.TextStyle.paragraph,
         required=False,
         max_length=600,
@@ -3267,28 +3451,13 @@ class HallOfFameModal(discord.ui.Modal):
         team = " ".join((self.team_name.value or "").strip().split())
         url = (self.bracket_url.value or "").strip()
 
-        roster_lines, roster_err = _parse_roster(self.roster.value or "")
-        if roster_err:
-            await interaction.response.send_message(
-                "Roster format (one per line):\n"
-                "`FR 123456789012345678`\n"
-                "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
-                f"{roster_err}",
-                ephemeral=True,
-            )
-            return
-
-        support_lines, support_err = _parse_roster(self.support.value or "", required=False)
-        if support_err:
-            await interaction.response.send_message(
-                "Support format (same as roster, one per line):\n"
-                "`FR 123456789012345678`\n"
-                "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
-                f"{support_err}",
-                ephemeral=True,
-            )
+        roster_lines, support_lines, res_err, yaml_source_hint = _hall_of_fame_roster_support_resolve(
+            team,
+            self.roster.value or "",
+            self.support.value or "",
+        )
+        if res_err:
+            await interaction.response.send_message(res_err, ephemeral=True)
             return
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
@@ -3343,7 +3512,11 @@ class HallOfFameModal(discord.ui.Modal):
             )
             return
 
-        await interaction.response.send_message(f"Posted in <#{channel.id}>.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Posted in <#{channel.id}>."
+            + (f"\n\n{yaml_source_hint}" if yaml_source_hint else ""),
+            ephemeral=True,
+        )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         print("HallOfFameModal error:", repr(error))
@@ -3380,14 +3553,14 @@ class FRTHallOfFameModal(discord.ui.Modal):
     )
     roster = discord.ui.TextInput(
         label="Roster (one per line: country + discord id)",
-        placeholder="FR 123456789012345678\nMA <@123456789012345678>\n:flag_es: 123456789012345678",
+        placeholder="Blank when team is in leaderboard/output/rosters.yaml; else one line/player",
         style=discord.TextStyle.paragraph,
-        required=True,
+        required=False,
         max_length=600,
     )
     support = discord.ui.TextInput(
-        label="Support (optional, same format as roster)",
-        placeholder="Leave blank if none",
+        label="Support (optional)",
+        placeholder="Usually blank when YAML lists support for this team; else same as roster",
         style=discord.TextStyle.paragraph,
         required=False,
         max_length=600,
@@ -3426,28 +3599,13 @@ class FRTHallOfFameModal(discord.ui.Modal):
         url = (self.bracket_url.value or "").strip()
         mode_val = (self.mode.value or "").strip() or "-"
 
-        roster_lines, roster_err = _parse_roster(self.roster.value or "")
-        if roster_err:
-            await interaction.response.send_message(
-                "Roster format (one per line):\n"
-                "`FR 123456789012345678`\n"
-                "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
-                f"{roster_err}",
-                ephemeral=True,
-            )
-            return
-
-        support_lines, support_err = _parse_roster(self.support.value or "", required=False)
-        if support_err:
-            await interaction.response.send_message(
-                "Support format (same as roster, one per line):\n"
-                "`FR 123456789012345678`\n"
-                "`:flag_fr: <@123456789012345678>`\n"
-                "`🇫🇷 123456789012345678`\n\n"
-                f"{support_err}",
-                ephemeral=True,
-            )
+        roster_lines, support_lines, res_err, yaml_source_hint = _hall_of_fame_roster_support_resolve(
+            team,
+            self.roster.value or "",
+            self.support.value or "",
+        )
+        if res_err:
+            await interaction.response.send_message(res_err, ephemeral=True)
             return
 
         color = (server.embed_color or {}).get(ttype, 0xbe629b)
@@ -3497,7 +3655,11 @@ class FRTHallOfFameModal(discord.ui.Modal):
             )
             return
 
-        await interaction.response.send_message(f"Posted in <#{channel.id}>.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Posted in <#{channel.id}>."
+            + (f"\n\n{yaml_source_hint}" if yaml_source_hint else ""),
+            ephemeral=True,
+        )
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         print("FRTHallOfFameModal error:", repr(error))
