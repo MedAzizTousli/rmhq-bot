@@ -62,12 +62,12 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Samba Cookers (FEEL THE AURA)": "Samba Cookers",
     "Samba Cooker": "Samba Cookers",
     "√ ᴠᴏʀᴛᴇx": "Vortex",
-    "100X35": "Volare",
-    "The Chicks": "Volare",
-    "Trapani FC": "Volare",
-    "Karasuno 烏": "Volare",
-    "Karasuno": "Volare",
-    "Pride Warriors": "Volare",
+    "100X35": "NXT",
+    "The Chicks": "NXT",
+    "Trapani FC": "NXT",
+    "Karasuno 烏": "NXT",
+    "Karasuno": "NXT",
+    "Pride Warriors": "NXT",
     "ΞØN Esports": "1Motive",
     "EON Esports": "1Motive",
     "ΩRIGIN": "ORIGIN",
@@ -132,8 +132,8 @@ TEAM_NAME_MAP: dict[str, str] = {
     "PEKKA": "MOIRAI CIS",
     "barsik": "Ivory Mantis",
     "DeltaX": "DeltaX Black Swans",
-    "Haki": "DeltaX Golden Requiem",
-    "Golden Requiem": "DeltaX Golden Requiem",
+    "Haki": "Flow Rising",
+    "Golden Requiem": "Flow Rising",
     "Focus": "Bella Frocius",
     "X5": "Dark Instinct",
     "∆X Black Swans": "DeltaX Black Swans",
@@ -145,8 +145,9 @@ TEAM_NAME_MAP: dict[str, str] = {
     "Dick Riders": "Kill-Streak Monkey",
     "Aziz clock": "aziz show clock",
     "WWLUGAN$K": "WWLUGANSK",
-    "ΔX Golden Requiem": "DeltaX Golden Requiem",
-    "Volare": "NXT"
+    "ΔX Golden Requiem": "Flow Rising",
+    "Volare": "NXT",
+    "DeltaX Golden Requiem": "Flow Rising"
 }
 
 DISBANDED_TEAMS: list[str] = [

@@ -4,9 +4,9 @@ Rank,Team,Points
 3,OVERDOZEE CIS,1733.50
 4,Kin,1680.30
 5,Str1ve eSports,1677.50
-6,VOLARE,1468.80
-7,Winzy,1460.50
-8,Zenith,1446.20
+6,Winzy,1460.50
+7,Zenith,1446.20
+8,NXT,1384.80
 9,Renascença,1384.50
 10,Ivory Mantis,1148.50
 11,Reborn Xi,1125.80
@@ -16,7 +16,7 @@ Rank,Team,Points
 15,MOIRAI CIS,754.00
 16,Flow Riders,748.10
 17,Dark Instinct,673.50
-18,DeltaX Golden Requiem,567.80
+18,Flow Rising,567.80
 19,DeltaX Black Swans,506.50
 20,aziz show clock,430.00
 21,Zentrix Esports,421.10
@@ -57,68 +57,69 @@ Rank,Team,Points
 56,EDEN,95.00
 57,WildCard,88.40
 58,The Old Firm,88.00
-59,RXM,66.00
-60,Tasty Crousty FC,65.00
-61,Death Cloud Esports,62.00
-62,Young Bastards Club,61.10
-63,VALHALLA,60.40
-64,Shamrock FC,60.00
-65,5WLAN,59.40
-66,FRAUDES,57.00
-67–68,SOLID,56.00
-67–68,Totally spies,56.00
-69–71,False 5 Blue,52.40
-69–71,Infinite,52.40
-69–71,PXG,52.40
-72,InFeriX Esports,52.00
-73,TENRYU,49.10
-74,Bluelock,46.00
-75,Anarchy,38.00
-76,Mysteries Of Bangladesh,36.00
-77,VOLT Guardian Owls,32.00
-78–89,3m braa wa ele ho Zman a7na l3eebh,28.00
-78–89,Classic V,28.00
-78–89,DISCIPLINE,28.00
-78–89,False 5 Black,28.00
-78–89,LA Ñ,28.00
-78–89,OBLIVION,28.00
-78–89,STRIVE NA,28.00
-78–89,The Night Owls,28.00
-78–89,The Simpson,28.00
-78–89,Void Walkers,28.00
-78–89,YOSHI,28.00
-78–89,Zigotos,28.00
-90,La Pasión,25.00
-91,Lotus,20.00
-92–94,Brussels JK Black,19.00
-92–94,JabberWock,19.00
-92–94,Revenants ˣ Limitless,19.00
-95–98,Backboarders,18.00
-95–98,HELLOKITY,18.00
-95–98,Vaelis,18.00
-95–98,Vanta Edge,18.00
-99,AQUASERVICIO,15.00
-100–101,Oro Team,13.10
-100–101,SYNCΞD RFC,13.10
-102–107,Aurora FC,12.00
-102–107,BJK Black,12.00
-102–107,Fly To Moon,12.00
-102–107,ORION ACADEMY,12.00
-102–107,PXG U20,12.00
-102–107,SOL | Invictus,12.00
-108,TΞMPO,11.00
-109–111,AETERNVS,8.00
-109–111,Trifecta,8.00
-109–111,Young Ballers Revival,8.00
-112–117,KIKI,7.00
-112–117,NYX V,7.00
-112–117,PRAGMA CLAN,7.00
-112–117,under heaven,7.00
-112–117,UnderDozee,7.00
-112–117,ZXC TEAM,7.00
-118–119,Amog sus,4.00
-118–119,Aura,4.00
-120–123,O-Beck City,1.00
-120–123,Revenants x Limitless,1.00
-120–123,Vorpal sword,1.00
-120–123,YUREI,1.00
+59,Volare,84.00
+60,RXM,66.00
+61,Tasty Crousty FC,65.00
+62,Death Cloud Esports,62.00
+63,Young Bastards Club,61.10
+64,VALHALLA,60.40
+65,Shamrock FC,60.00
+66,5WLAN,59.40
+67,FRAUDES,57.00
+68–69,SOLID,56.00
+68–69,Totally spies,56.00
+70–72,False 5 Blue,52.40
+70–72,Infinite,52.40
+70–72,PXG,52.40
+73,InFeriX Esports,52.00
+74,TENRYU,49.10
+75,Bluelock,46.00
+76,Anarchy,38.00
+77,Mysteries Of Bangladesh,36.00
+78,VOLT Guardian Owls,32.00
+79–90,3m braa wa ele ho Zman a7na l3eebh,28.00
+79–90,Classic V,28.00
+79–90,DISCIPLINE,28.00
+79–90,False 5 Black,28.00
+79–90,LA Ñ,28.00
+79–90,OBLIVION,28.00
+79–90,STRIVE NA,28.00
+79–90,The Night Owls,28.00
+79–90,The Simpson,28.00
+79–90,Void Walkers,28.00
+79–90,YOSHI,28.00
+79–90,Zigotos,28.00
+91,La Pasión,25.00
+92,Lotus,20.00
+93–95,Brussels JK Black,19.00
+93–95,JabberWock,19.00
+93–95,Revenants ˣ Limitless,19.00
+96–99,Backboarders,18.00
+96–99,HELLOKITY,18.00
+96–99,Vaelis,18.00
+96–99,Vanta Edge,18.00
+100,AQUASERVICIO,15.00
+101–102,Oro Team,13.10
+101–102,SYNCΞD RFC,13.10
+103–108,Aurora FC,12.00
+103–108,BJK Black,12.00
+103–108,Fly To Moon,12.00
+103–108,ORION ACADEMY,12.00
+103–108,PXG U20,12.00
+103–108,SOL | Invictus,12.00
+109,TΞMPO,11.00
+110–112,AETERNVS,8.00
+110–112,Trifecta,8.00
+110–112,Young Ballers Revival,8.00
+113–118,KIKI,7.00
+113–118,NYX V,7.00
+113–118,PRAGMA CLAN,7.00
+113–118,under heaven,7.00
+113–118,UnderDozee,7.00
+113–118,ZXC TEAM,7.00
+119–120,Amog sus,4.00
+119–120,Aura,4.00
+121–124,O-Beck City,1.00
+121–124,Revenants x Limitless,1.00
+121–124,Vorpal sword,1.00
+121–124,YUREI,1.00
